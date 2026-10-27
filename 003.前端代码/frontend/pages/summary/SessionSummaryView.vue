@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRunStore } from '../../stores/run.js'
 import { usePlanStore } from '../../stores/plan.js'
@@ -22,6 +22,15 @@ const feedback = computed(() => run.feedback || {})
 const summary = computed(() => run.summary)
 const adjustments = computed(() => run.lastAdjustments || [])
 const safetyNotice = computed(() => run.safetyNotice)
+const analyzing = ref(true)
+const needsPlanAdjustment = computed(() => Boolean(safetyNotice.value) || adjustments.value.length > 0)
+const adjustmentReason = computed(() => safetyNotice.value?.text || adjustments.value[0]?.reasonText || '本次训练反馈触发了负荷调整规则。')
+
+onMounted(() => {
+  window.setTimeout(() => {
+    analyzing.value = false
+  }, 500)
+})
 
 const planned = computed(() => run.session?.distanceKm || 0)
 const achievement = computed(() =>
@@ -60,242 +69,100 @@ function keepPlan() {
 
 <template>
   <main class="min-h-screen bg-surface">
-      <AppHeader title="训练总结" subtitle="训练回顾 · 智程" back />
+    <AppHeader title="今日训练总结" subtitle="AI训练复盘" back />
 
-    <div v-if="!summary" class="px-gutter pt-20 text-center space-y-3">
-      <p class="text-on-surface-variant">还没有训练总结，先完成一次训练并提交反馈。</p>
-      <AppButton variant="secondary" @click="router.push('/plan')">返回计划总览</AppButton>
-    </div>
+    <div class="pt-14 pb-10 px-gutter space-y-space-md">
+      <section v-if="analyzing" class="bg-surface-container-lowest rounded-2xl p-8 shadow-card text-center">
+        <div class="w-12 h-12 mx-auto rounded-full bg-primary-fixed flex items-center justify-center text-primary animate-pulse">
+          <Icon name="auto_awesome" :size="24" filled />
+        </div>
+        <h2 class="font-headline-sm text-headline-sm text-on-surface mt-3">智程正在分析本次训练</h2>
+        <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">正在整理训练数据和身体反馈…</p>
+      </section>
 
-    <div v-else class="pt-14 pb-10 px-gutter space-y-space-md">
-      <!-- 顶部卡 -->
-      <section class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/30 flex items-center justify-between">
-        <div class="flex items-center gap-space-md">
-          <div class="w-12 h-12 rounded-full bg-primary-container/15 flex items-center justify-center text-primary shrink-0">
-            <Icon name="task_alt" :size="28" />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-full bg-primary text-on-primary font-bold text-body-sm">已完成</span>
-              <span class="font-body-sm text-body-sm text-on-surface-variant">{{ run.session?.title?.split('·')[0] }}</span>
+      <template v-else-if="summary">
+        <section class="bg-surface-container-lowest rounded-2xl p-4 shadow-card flex items-center justify-between">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-11 h-11 rounded-full bg-success-container flex items-center justify-center text-on-success-container shrink-0">
+              <Icon name="task_alt" :size="24" />
             </div>
-            <p class="font-headline-sm text-headline-sm text-on-surface mt-1">
-              {{ achievement >= 95 ? '完成度出色' : achievement >= 70 ? '基本达成计划' : '未达计划目标' }}
-            </p>
+            <div class="min-w-0">
+              <span class="font-label-data text-label-data text-success">今日训练已完成</span>
+              <h2 class="font-headline-sm text-headline-sm text-on-surface mt-1 truncate">{{ run.session?.title || '本次训练' }}</h2>
+            </div>
           </div>
-        </div>
-        <div class="text-right shrink-0">
-          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase block">达成率</span>
-          <span class="font-headline-lg text-headline-lg text-primary font-bold leading-none">
-            {{ achievement }}<span class="text-body-sm">%</span>
-          </span>
-        </div>
-      </section>
-
-      <!-- 安全提示 -->
-      <section v-if="safetyNotice" class="bg-error-container rounded-xl p-space-md shadow-card">
-        <div class="flex items-start gap-2">
-          <Icon name="emergency" :size="22" class="text-error shrink-0 mt-0.5" />
-          <div class="min-w-0">
-            <p class="font-headline-sm text-headline-sm text-on-error-container font-bold">{{ safetyNotice.title }}</p>
-            <p class="text-body-sm text-on-error-container leading-relaxed mt-1">{{ safetyNotice.text }}</p>
-            <p class="text-[11px] text-on-error-container/80 mt-1">依据：{{ safetyNotice.rule }}</p>
+          <div class="text-right shrink-0">
+            <span class="text-body-sm text-body-sm text-on-surface-variant block">完成度</span>
+            <strong class="font-headline-lg text-headline-lg text-primary">{{ achievement }}%</strong>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- 训练数据 -->
-      <section class="flex flex-col gap-space-xs">
-        <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-1.5">
-            <span class="w-1.5 h-3.5 bg-primary rounded-full" />
+        <section class="bg-surface-container-lowest rounded-2xl p-4 shadow-card">
+          <div class="flex items-center justify-between mb-3">
             <h2 class="font-headline-sm text-headline-sm text-on-surface">训练数据</h2>
+            <span class="font-body-sm text-body-sm text-on-surface-variant">计划 {{ planned.toFixed(1) }} 公里</span>
           </div>
-          <span class="font-label-data text-label-data text-on-surface-variant">4 项核心指标</span>
-        </div>
-        <div class="grid grid-cols-2 gap-space-sm">
-          <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col">
-            <div class="flex items-center gap-1.5 text-on-surface-variant">
-              <Icon name="timer" :size="16" />
-              <span class="font-label-caps text-label-caps uppercase">实际用时</span>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="rounded-xl bg-surface-container-low p-3 text-center">
+              <span class="text-body-sm text-body-sm text-on-surface-variant block">实际距离</span>
+              <strong class="font-headline-sm text-headline-sm text-on-surface block mt-1">{{ Number(record.actualDistanceKm || 0).toFixed(1) }}公里</strong>
             </div>
-            <div class="mt-2">
-              <span class="font-headline-lg text-headline-lg text-on-surface font-bold">{{ formatDuration(record.actualDurationSec || 0) }}</span>
+            <div class="rounded-xl bg-surface-container-low p-3 text-center">
+              <span class="text-body-sm text-body-sm text-on-surface-variant block">训练用时</span>
+              <strong class="font-headline-sm text-headline-sm text-on-surface block mt-1">{{ formatDuration(record.actualDurationSec || 0) }}</strong>
             </div>
-          </div>
-          <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col">
-            <div class="flex items-center gap-1.5 text-on-surface-variant">
-              <Icon name="straighten" :size="16" />
-              <span class="font-label-caps text-label-caps uppercase">实际距离</span>
-            </div>
-            <div class="mt-2">
-              <span class="font-headline-lg text-headline-lg text-on-surface font-bold">{{ (record.actualDistanceKm || 0).toFixed(2) }}</span>
-              <span class="font-body-sm text-body-sm text-on-surface-variant ml-1">公里</span>
+            <div class="rounded-xl bg-surface-container-low p-3 text-center">
+              <span class="text-body-sm text-body-sm text-on-surface-variant block">平均配速</span>
+              <strong class="font-headline-sm text-headline-sm text-primary block mt-1">{{ formatPace(record.avgPace || 0) }}</strong>
             </div>
           </div>
-          <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col">
-            <div class="flex items-center gap-1.5 text-on-surface-variant">
-              <Icon name="speed" :size="16" />
-              <span class="font-label-caps text-label-caps uppercase">平均配速</span>
-            </div>
-            <div class="mt-2">
-              <span class="font-headline-lg text-headline-lg text-primary font-bold">{{ formatPace(record.avgPace || 0) }}</span>
-              <span class="font-body-sm text-body-sm text-on-surface-variant ml-1">/公里</span>
-            </div>
+        </section>
+
+        <section class="bg-surface-container-lowest rounded-2xl p-4 shadow-card">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-headline-sm text-headline-sm text-on-surface">训练反馈</h2>
+            <span class="font-body-sm text-body-sm text-on-surface-variant">用户自评</span>
           </div>
-          <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col">
-            <div class="flex items-center gap-1.5 text-on-surface-variant">
-              <Icon name="flag" :size="16" />
-              <span class="font-label-caps text-label-caps uppercase">目标完成度</span>
-            </div>
-            <div class="mt-2">
-              <span class="font-headline-lg text-headline-lg text-secondary font-bold">{{ achievement }}%</span>
-              <span class="font-body-sm text-body-sm text-on-surface-variant ml-1 font-normal">
-                {{ completionLabel(feedback.completion) }}
-              </span>
-            </div>
+          <div class="flex items-center justify-between py-2 border-b border-surface-container-high">
+            <span class="font-body-md text-body-md text-on-surface-variant">主观强度</span>
+            <strong class="font-headline-sm text-headline-sm text-on-surface">{{ feedback.rpe || '—' }} / 10</strong>
           </div>
-        </div>
+          <div class="flex items-center justify-between py-2">
+            <span class="font-body-md text-body-md text-on-surface-variant">身体状态</span>
+            <strong class="font-body-md text-body-md text-on-surface">{{ feedback.painScore > 0 ? `不适 ${feedback.painScore} 分` : '无明显不适' }}</strong>
+          </div>
+        </section>
+
+        <section class="bg-surface-container-lowest rounded-2xl p-4 shadow-card">
+          <div class="flex items-center gap-2 mb-2">
+            <Icon name="auto_awesome" :size="18" class="text-primary" filled />
+            <h2 class="font-headline-sm text-headline-sm text-on-surface">智程训练总结</h2>
+          </div>
+          <p class="font-body-md text-body-md text-on-surface leading-relaxed">{{ summary.text || '本次训练已完成，继续保持稳定节奏。' }}</p>
+        </section>
+
+        <section v-if="needsPlanAdjustment" class="bg-primary-fixed/70 rounded-2xl p-4 border border-primary-container/20">
+          <h2 class="font-headline-sm text-headline-sm text-on-surface">需要调整训练计划</h2>
+          <p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">{{ adjustmentReason }}</p>
+          <AppButton class="mt-3" variant="primary" icon="tune" @click="router.push('/plan/adjust')">查看计划调整</AppButton>
+        </section>
+
+        <section v-else class="bg-success-container/70 rounded-2xl p-4">
+          <div class="flex items-center gap-2 text-on-success-container">
+            <Icon name="check_circle" :size="20" />
+            <h2 class="font-headline-sm text-headline-sm">按原计划继续</h2>
+          </div>
+          <p class="font-body-sm text-body-sm text-on-success-container mt-1">本次训练没有触发调整规则，下一次训练继续按计划执行。</p>
+          <AppButton class="mt-3" variant="secondary" @click="router.push('/plan')">按原计划继续</AppButton>
+        </section>
+
+        <AppButton variant="ghost" @click="router.push('/plan')">返回训练计划</AppButton>
+      </template>
+
+      <section v-if="!summary" class="bg-surface-container-lowest rounded-2xl p-6 shadow-card text-center">
+        <p class="font-body-md text-body-md text-on-surface-variant">还没有可展示的训练总结。</p>
+        <AppButton class="mt-4" variant="secondary" @click="router.push('/plan')">返回训练计划</AppButton>
       </section>
-
-      <!-- 用户反馈 -->
-      <section class="flex flex-col gap-space-xs">
-        <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-1.5">
-            <span class="w-1.5 h-3.5 bg-secondary rounded-full" />
-            <h2 class="font-headline-sm text-headline-sm text-on-surface">用户反馈</h2>
-          </div>
-          <span class="font-label-data text-label-data text-on-surface-variant">身心状态自评</span>
-        </div>
-        <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col gap-space-sm">
-          <div class="flex items-center justify-between py-1 border-b border-surface-container-high">
-            <div class="flex items-center gap-2">
-              <Icon name="tune" :size="18" class="text-primary" />
-              <span class="font-body-md text-body-md text-on-surface">主观强度</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="font-headline-sm text-headline-sm text-primary font-bold">{{ feedback.rpe }}</span>
-              <span class="font-body-sm text-body-sm text-on-surface-variant">/ 目标 {{ run.session?.intensity?.rpe?.[1] }}</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-between py-1 border-b border-surface-container-high">
-            <div class="flex items-center gap-2">
-              <Icon name="battery_charging_full" :size="18" class="text-secondary" />
-              <span class="font-body-md text-body-md text-on-surface">疲劳程度</span>
-            </div>
-            <span class="px-2 py-0.5 rounded bg-surface-container text-body-sm font-semibold text-on-surface">
-              {{ { easy: '轻松', normal: '正常', fatigued: '疲劳', very_hard: '明显吃力' }[feedback.feel] || '—' }}
-            </span>
-          </div>
-          <div class="flex items-center justify-between py-1">
-            <div class="flex items-center gap-2">
-              <Icon name="health_and_safety" :size="18" class="text-primary" />
-              <span class="font-body-md text-body-md text-on-surface">身体不适</span>
-            </div>
-            <span
-              class="px-2 py-0.5 rounded text-body-sm font-semibold"
-              :class="feedback.painScore >= 4 ? 'bg-error-container text-on-error-container' : 'bg-surface-container text-on-surface'"
-            >
-              {{ feedback.painScore >= 4 ? `疼痛 ${feedback.painScore} 分 · ${(feedback.painParts || []).join('、')}` : '无明显不适' }}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <!-- AI 训练总结（四段式） -->
-      <section class="flex flex-col gap-space-xs">
-        <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-1.5">
-            <div class="w-5 h-5 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
-              <Icon name="smart_toy" :size="13" filled />
-            </div>
-            <h2 class="font-headline-sm text-headline-sm text-on-surface">训练总结（智程教练）</h2>
-          </div>
-          <span class="font-label-caps text-label-caps text-primary font-bold">智能复盘</span>
-        </div>
-        <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col gap-space-sm">
-          <div v-for="s in summary.structure" :key="s.key" class="flex gap-space-sm items-start">
-            <div
-              class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-              :class="SECTION_STYLE[s.key].bg"
-            >
-              <Icon :name="SECTION_STYLE[s.key].icon" :size="15" :class="SECTION_STYLE[s.key].fg" />
-            </div>
-            <div class="flex-1">
-              <h3 class="font-body-md text-body-md font-bold text-on-surface">{{ s.title }}</h3>
-              <p
-                v-for="(p, i) in s.paragraphs"
-                :key="i"
-                class="font-body-sm text-body-sm text-on-surface-variant mt-0.5 leading-relaxed"
-              >
-                {{ p }}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 后续建议与行动：调整 diff -->
-      <section class="flex flex-col gap-space-xs">
-        <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-1.5">
-            <span class="w-1.5 h-3.5 bg-primary-container rounded-full" />
-            <h2 class="font-headline-sm text-headline-sm text-on-surface">后续建议与行动</h2>
-          </div>
-          <span class="font-label-data text-label-data text-on-surface-variant">NEXT STEP</span>
-        </div>
-
-        <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card border border-outline-variant/20 flex flex-col gap-space-md">
-          <div class="bg-surface-container-low rounded-lg p-space-sm flex flex-col gap-1">
-            <div class="flex items-center gap-1.5 text-primary">
-              <Icon name="event_upcoming" :size="16" />
-              <span class="font-body-md text-body-md font-bold">下一次训练安排</span>
-            </div>
-            <p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed pl-5">
-              {{
-                planStore.plan
-                  ? `第 ${planStore.plan.currentWeek} 周 · ${planStore.upcomingSessions[0]?.dayLabel || '—'} · ${
-                      planStore.upcomingSessions[0]?.title || '—'
-                    }`
-                  : '—'
-              }}
-            </p>
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-1.5 text-secondary">
-                <Icon name="verified" :size="16" />
-                <span class="font-body-md text-body-md font-bold">计划调整评估</span>
-              </div>
-              <StatusTag tone="brand" icon="check_circle">
-                {{ adjustments.length ? `${adjustments.length} 处变更` : '无需调整' }}
-              </StatusTag>
-            </div>
-
-            <AdjustmentDiff v-if="diffItems.length" :items="diffItems" />
-            <p v-else class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
-              当前状态未触发任何调整规则，计划按原样继续推进。
-            </p>
-          </div>
-
-          <!-- 安全类不给拒绝按钮 -->
-          <div v-if="safetyNotice" class="pt-1">
-            <AppButton variant="danger" icon="self_improvement" @click="keepPlan">我今天休息</AppButton>
-            <p class="text-[11px] text-on-error-container/80 mt-1 text-center">
-              安全类调整不可拒绝，系统会记录本次决策。
-            </p>
-          </div>
-          <div v-else class="flex gap-2 pt-1">
-            <AppButton variant="primary" icon="check_circle" @click="acceptAdjustments">采纳调整</AppButton>
-            <AppButton variant="secondary" @click="keepPlan">保持原计划</AppButton>
-          </div>
-        </div>
-      </section>
-
-      <p class="disclaimer">
-        本产品提供训练信息与建议，不构成医疗建议。开始或修改运动计划前，请咨询有资质的医疗专业人员。
-      </p>
     </div>
   </main>
 </template>

@@ -2,7 +2,7 @@
  * 演示数据 —— PRD v1.2 §9.3「演示数据准备」。
  *
  * 演示账号：123 / 123456，预置 3 周历史训练记录（用于历史与趋势页有内容）。
- * 预置 3 个候选档案账号（零基础 / 进阶 / 有伤病），应对现场问询。
+ * 预置 2 个候选档案账号（进阶 / 有伤病），应对现场问询。
  */
 
 export const DEMO_ACCOUNT = {
@@ -41,6 +41,7 @@ export const DEMO_PROFILE = {
   easyPace: 405, // 6'45"/km
   targetType: 'improve_10k',
   targetDistance: '10K',
+  targetTime: 3510, // 58'30"，与演示目标配速 5'51"/公里一致
   targetDate: plusDays(56),
   hasRace: true,
   targetPace: 351, // 58'30" → 5'51"/km
@@ -58,7 +59,7 @@ export const DEMO_PROFILES = [
   { key: 'demo', name: '主演示 · 10km 进阶', profile: DEMO_PROFILE },
   {
     key: 'beginner',
-    name: '零基础 · 5km 体验',
+    name: '基础 · 10km 保守',
     profile: {
       ...DEMO_PROFILE,
       gender: 'female',
@@ -73,9 +74,9 @@ export const DEMO_PROFILES = [
       best5kPace: null,
       best10kPace: null,
       easyPace: 480,
-      targetType: 'experience',
-      targetDistance: '5K',
-      targetPace: 330,
+      targetType: 'improve_10k',
+      targetDistance: '10K',
+      targetPace: 360,
       targetDate: plusDays(56),
       injuries: [],
       availableDays: 2,

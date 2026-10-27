@@ -26,7 +26,6 @@ export function buildCuePack(session, options = {}) {
   const paceLow = session?.intensity?.paceLow || 420
   const paceHigh = session?.intensity?.paceHigh || 450
   const rpe = session?.intensity?.rpe?.[1] ?? 4
-  const talkTest = session?.intensity?.talkTest || '能持续对话'
   const distance = session?.distanceKm || 5
   const goal = options.goalPaceSec
 
@@ -35,15 +34,15 @@ export function buildCuePack(session, options = {}) {
   pack.push({
     id: 'cue_start',
     trigger: 'start',
-    text: `训练开始。今天是${session?.title?.split('·')[0]?.trim() || '轻松跑'}，强度目标是「${talkTest}」，配速大约 ${formatPace(
+    text: `训练开始。今天是${session?.title?.split('·')[0]?.trim() || '轻松跑'}，保持呼吸和步频稳定，配速大约 ${formatPace(
       paceLow,
     )} 到 ${formatPace(paceHigh)}。前 3 分钟按轻松跑进入，别急着加速。`,
   })
 
   const kmCues = [
     (n) => `1 公里完成，用时 ${formatPace(paceLow + 8)}，平均配速 ${formatPace(paceLow + 8)}，比目标区间慢了 8 秒，很好。`,
-    (n) => `${n} 公里完成，节奏保持住了。如果还能说完整句子，说明强度是对的。`,
-    (n) => `${n} 公里完成。看看你的呼吸：能连贯说话就继续保持，不要因为感觉轻松就提速。`,
+    (n) => `${n} 公里完成，节奏保持住了。呼吸平稳、动作放松，说明强度控制得不错。`,
+    (n) => `${n} 公里完成。检查呼吸和步频是否均匀，不要因为感觉轻松就提速。`,
     (n) => `${n} 公里完成，已经过了最容易放弃的阶段。剩下的按今天的配速走完。`,
   ]
   kmCues.forEach((fn, i) => {
@@ -53,12 +52,12 @@ export function buildCuePack(session, options = {}) {
   pack.push({
     id: 'cue_intensity_1',
     trigger: 'intensity',
-    text: '现在的强度偏快了，试着放松一点，能说完整句子就对了。',
+    text: '现在的强度偏快了，试着放松肩颈并缩短步幅，让呼吸逐渐稳定。',
   })
   pack.push({
     id: 'cue_intensity_2',
     trigger: 'intensity',
-    text: '如果现在说不出完整句子，把速度降一档，先把心率压回来再继续。',
+    text: '如果呼吸明显急促，把速度降一档，先让心率回到目标区间再继续。',
   })
 
   pack.push({

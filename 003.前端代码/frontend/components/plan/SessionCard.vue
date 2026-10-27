@@ -46,9 +46,7 @@ const statusMeta = computed(() => {
 </script>
 
 <template>
-  <component
-    :is="today ? 'router-link' : 'div'"
-    :to="today ? '/run/prep' : undefined"
+  <div
     class="block bg-surface-container-lowest rounded-xl p-3 relative overflow-hidden"
     :class="[
       today ? 'border border-primary-container/25 active:scale-[0.99] hover:shadow-card-lg transition-all' : '',
@@ -88,5 +86,5 @@ const statusMeta = computed(() => {
         <Icon v-if="today" name="chevron_right" :size="18" class="text-on-surface-variant" />
       </div>
     </div>
-  </component>
+  </div>
 </template>

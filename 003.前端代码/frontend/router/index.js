@@ -31,6 +31,12 @@ const routes = [
     meta: { title: '档案确认', requiresAuth: true, tab: null },
   },
   {
+    path: '/profile/plan-confirm',
+    name: 'profile-plan-confirm',
+    component: () => import('../pages/plan/PlanConfirmView.vue'),
+    meta: { title: 'AI训练计划确认', requiresAuth: true, tab: null },
+  },
+  {
     path: '/plan',
     name: 'plan',
     component: () => import('../pages/plan/PlanOverviewView.vue'),

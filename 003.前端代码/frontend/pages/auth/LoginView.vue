@@ -23,6 +23,8 @@ function nextRoute() {
 
 const account = ref('')
 const password = ref('')
+const passwordConfirm = ref('')
+const isRegister = ref(false)
 const showPwd = ref(false)
 const loading = ref(false)
 
@@ -35,18 +37,28 @@ async function handleLogin() {
     ui.toast('请输入账号与密码', 'warn')
     return
   }
-  loading.value = true
-  await new Promise((r) => setTimeout(r, 500))
-  const user = auth.login(account.value.trim(), password.value)
-  loading.value = false
-
-  if (!user) {
-    ui.toast('账号或密码错误，请使用演示账号登录', 'error')
+  if (isRegister.value && password.value !== passwordConfirm.value) {
+    ui.toast('两次输入的密码不一致', 'warn')
     return
   }
+  loading.value = true
+  try {
+    const user = isRegister.value
+      ? await auth.register(account.value.trim(), password.value, '跑者')
+      : await auth.login(account.value.trim(), password.value)
+    ui.toast(isRegister.value ? '注册成功' : '登录成功', 'success')
+    go(nextRoute())
+  } catch (error) {
+    ui.toast(error.message || '操作失败，请稍后重试', 'error')
+  } finally {
+    loading.value = false
+  }
+}
 
-  ui.toast('登录成功', 'success')
-  go(nextRoute())
+function toggleMode() {
+  isRegister.value = !isRegister.value
+  passwordConfirm.value = ''
+  showPwd.value = false
 }
 
 function openTerms() {
@@ -93,7 +105,7 @@ function openPrivacy() {
       <!-- 表单卡 -->
       <section class="w-full bg-white/[0.76] backdrop-blur-sm rounded-2xl p-6 shadow-card-lg border border-white/50 mb-6">
         <div class="flex flex-col items-center justify-center mb-6 border-b border-surface-container/60 pb-3">
-          <h2 class="font-headline-sm text-headline-sm text-primary font-bold tracking-tight">账号登录</h2>
+          <h2 class="font-headline-sm text-headline-sm text-primary font-bold tracking-tight">{{ isRegister ? '注册账号' : '账号登录' }}</h2>
           <span class="w-8 h-0.5 bg-primary rounded-full mt-2" />
         </div>
 
@@ -118,10 +130,26 @@ function openPrivacy() {
             </div>
           </div>
 
+          <div v-if="isRegister" class="flex flex-col gap-1.5">
+            <label class="font-label-caps text-label-caps text-on-surface-variant font-semibold" for="pwd-confirm-input">确认密码</label>
+            <div
+              class="flex h-12 items-center bg-surface-container-low/80 rounded-xl px-3.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/40 border border-transparent focus-within:border-primary/20 transition-all"
+            >
+              <input
+                id="pwd-confirm-input"
+                v-model="passwordConfirm"
+                autocomplete="new-password"
+                class="w-full bg-transparent font-body-md text-body-md text-on-surface placeholder:text-outline outline-none"
+                placeholder="请再次输入密码"
+                :type="showPwd ? 'text' : 'password'"
+              />
+            </div>
+          </div>
+
           <div class="flex flex-col gap-1.5">
             <div class="flex items-center justify-between">
               <label class="font-label-caps text-label-caps text-on-surface-variant font-semibold" for="pwd-input">密码</label>
-              <a class="font-body-sm text-body-sm text-primary hover:underline cursor-pointer" @click="ui.toast('演示阶段请使用演示账号', 'info')">
+              <a v-if="!isRegister" class="font-body-sm text-body-sm text-primary hover:underline cursor-pointer" @click="ui.toast('请联系管理员重置密码', 'info')">
                 忘记密码？
               </a>
             </div>
@@ -143,17 +171,17 @@ function openPrivacy() {
           </div>
 
           <AppButton variant="primary" :disabled="loading" icon="arrow_forward" @click="handleLogin">
-            {{ loading ? '登录中…' : '登录' }}
+            {{ loading ? (isRegister ? '注册中…' : '登录中…') : (isRegister ? '注册' : '登录') }}
           </AppButton>
 
           <div class="text-center mt-1">
-            <span class="font-body-sm text-body-sm text-outline">没有账号？</span>
+            <span class="font-body-sm text-body-sm text-outline">{{ isRegister ? '已有账号？' : '没有账号？' }}</span>
             <button
               class="font-body-sm text-body-sm text-primary font-semibold underline underline-offset-2 ml-1 hover:text-primary-container"
               type="button"
-              @click="ui.toast('演示阶段使用演示账号即可体验完整流程', 'info')"
+              @click="toggleMode"
             >
-              立即注册
+              {{ isRegister ? '立即登录' : '立即注册' }}
             </button>
           </div>
 

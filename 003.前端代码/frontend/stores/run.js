@@ -32,6 +32,8 @@ export const useRunStore = defineStore('run', {
     summary: null,
     lastAdjustments: [],
     safetyNotice: null,
+    /** 当前课次的练前/练后完成状态，反馈提交后仍保留并可继续修改 */
+    prepChecklist: {},
     /** Demo：本次训练直接给出「疼痛 5 分」的反馈预设（PRD §9.2 演示脚本） */
     demoFeedbackPreset: 'pain5',
     demoFeedbackPresets: [
@@ -170,6 +172,21 @@ export const useRunStore = defineStore('run', {
       const profileStore = useProfileStore()
       this.feedback = feedback
 
+      // 反馈页允许修正实际距离与用时，写回本次记录，供当前训练页和训练总结使用。
+      if (this.record) {
+        const actualDistanceKm = Number(feedback.actualDistanceKm)
+        const actualDurationSec = Number(feedback.actualDurationMin) * 60
+        const avgPace = actualDistanceKm > 0 && actualDurationSec > 0
+          ? Math.round(actualDurationSec / actualDistanceKm)
+          : this.record.avgPace
+        this.record = {
+          ...this.record,
+          actualDistanceKm: Number.isFinite(actualDistanceKm) ? actualDistanceKm : this.record.actualDistanceKm,
+          actualDurationSec: Number.isFinite(actualDurationSec) ? actualDurationSec : this.record.actualDurationSec,
+          avgPace,
+        }
+      }
+
       const plan = planStore.plan
       const recentRecords = historyStore.records.slice(0, 4).map((r) => ({
         ...r,
@@ -242,6 +259,7 @@ export const useRunStore = defineStore('run', {
       this.summary = null
       this.lastAdjustments = []
       this.safetyNotice = null
+      this.prepChecklist = {}
     },
   },
 })

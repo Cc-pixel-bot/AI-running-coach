@@ -350,19 +350,12 @@ export const TEMPLATES = {
   },
 }
 
-/** 目标类型 → 可用模板 */
+/** 当前 Demo 仅开放 10km 提升目标 */
 export const TEMPLATES_BY_GOAL = {
-  improve_5k: ['T5-WA'],
   improve_10k: ['T10-8W', 'T10-6W'],
-  experience: ['T5-WA', 'T10-8W'],
-  hm_finish: ['T-HM'],
-  mar_finish: ['T-MAR-20', 'T-MAR-16'],
 }
 
-/** 目标类型定义（PRD §1.3.3 四类目标表述） */
+/** 目标类型定义 */
 export const TARGET_TYPES = {
-  improve_5k: { key: 'improve_5k', label: '提升 5km', distance: '5K', weeks: 8, icon: 'timer' },
   improve_10k: { key: 'improve_10k', label: '提升 10km', distance: '10K', weeks: 8, icon: 'sprint' },
-  hm_finish: { key: 'hm_finish', label: '半马完赛', distance: 'HM', weeks: 12, icon: 'route' },
-  mar_finish: { key: 'mar_finish', label: '全马完赛', distance: 'MARATHON', weeks: 20, icon: 'flag' },
 }

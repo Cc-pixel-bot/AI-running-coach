@@ -6,10 +6,26 @@ import { DEMO_ADJUSTMENT_LOGS } from '../data/demoSeed.js'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+function normalizePlanCopy(plan) {
+  if (!plan) return plan
+  ;(plan.weeks || []).forEach((week) => {
+    ;(week.sessions || []).forEach((session) => {
+      session.title = String(session.title || '').replace(/\s*[（(]保守版[）)]/g, '')
+      if (session.description === '全程轻松，保持能交谈。超过计划距离不停是本周唯一任务。') {
+        session.description = '全程保持轻松和呼吸稳定。按计划距离持续完成，是本周的主要任务。'
+      }
+      if (session.description === '全程能正常说话的强度。目标是积累有氧基础，不是训练。') {
+        session.description = '全程保持呼吸从容、动作放松。目标是积累有氧基础，不追求速度。'
+      }
+    })
+  })
+  return plan
+}
+
 /** 训练计划（生成 → 确认 → 执行中 → 调整） */
 export const usePlanStore = defineStore('plan', {
   state: () => ({
-    plan: load('plan', null),
+    plan: normalizePlanCopy(load('plan', null)),
     generating: false,
     /** 待确认的调整集合 */
     pendingAdjustments: [],
@@ -57,7 +73,7 @@ export const usePlanStore = defineStore('plan', {
         return result
       }
 
-      this.plan = result
+      this.plan = normalizePlanCopy(result)
       this.confirmed = false
       save('plan', result)
       save('planConfirmed', false)
@@ -129,7 +145,7 @@ export const usePlanStore = defineStore('plan', {
 
       // 采纳时把规则引擎算出的新计划写回 —— 闭环的「计划真的变了」
       if (decision === 'accepted' && this.pendingPlan) {
-        this.plan = this.pendingPlan
+        this.plan = normalizePlanCopy(this.pendingPlan)
         save('plan', this.plan)
       }
       this.pendingAdjustments = []

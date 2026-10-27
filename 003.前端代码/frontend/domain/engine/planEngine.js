@@ -272,13 +272,13 @@ function buildSession({ kind, week, dayOffset, label, weekPlan, profile, goalPac
     description = `${qualityPlan?.description || meta.purpose}${weekPlan.stepBack ? '（回撤周仍保留质量课，强度不减。）' : ''}`
   } else if (kind === 'long') {
     title = '长距离跑 · 耐力打底'
-    description = '全程轻松，保持能交谈。超过计划距离不停是本周唯一任务。'
+    description = '全程保持轻松和呼吸稳定。按计划距离持续完成，是本周的主要任务。'
   } else if (kind === 'recovery') {
     title = '恢复跑 · 主动恢复'
     description = '极轻松的一次跑，用于吸收前几周负荷。'
   } else {
     title = '轻松跑 · 有氧基础'
-    description = '全程能正常说话的强度。目标是积累有氧基础，不是训练。'
+    description = '全程保持呼吸从容、动作放松。目标是积累有氧基础，不追求速度。'
   }
 
   const pace = paceRangeOf(level, goalPace, profile.targetDistance)
@@ -387,7 +387,7 @@ export function generatePlan(profile, options = {}) {
         if (s.type === 'tempo' || s.type === 'interval' || s.type === 'race') {
           s.level = 'easy'
           s.type = 'easy'
-          s.title = '轻松跑 · 有氧基础（保守版）'
+          s.title = '轻松跑 · 有氧基础'
           s.intensity = { ...INTENSITY.easy, ...{ level: 'easy', rpe: INTENSITY.easy.rpe } }
           const pace = paceRangeOf('easy', goalPace, profile.targetDistance)
           s.intensity.paceLow = pace.low

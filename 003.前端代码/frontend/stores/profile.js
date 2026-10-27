@@ -36,11 +36,14 @@ export const useProfileStore = defineStore('profile', {
         const distanceKm = { '5K': 5, '10K': 10, HM: 21.0975, MARATHON: 42.195 }[this.draft.targetDistance] || 10
         return Math.round(t / distanceKm)
       }
-      return null
+      return typeof this.draft.targetPace === 'number' && this.draft.targetPace > 0 ? this.draft.targetPace : null
     },
     targetTotalSec() {
       const t = this.draft.targetTime
-      return typeof t === 'number' && t > 0 ? t : null
+      if (typeof t === 'number' && t > 0) return t
+      const pace = this.draft.targetPace
+      const distanceKm = { '5K': 5, '10K': 10, HM: 21.0975, MARATHON: 42.195 }[this.draft.targetDistance] || 10
+      return typeof pace === 'number' && pace > 0 ? Math.round(pace * distanceKm) : null
     },
     screeningResult: (s) => evaluateScreening(s.draft.screening || {}),
     /** 建档完整度（用于「快捷预览」与提交校验） */

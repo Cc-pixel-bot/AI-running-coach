@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { DEMO_ACCOUNT, DEMO_PROFILES } from '../data/demoSeed.js'
 import { load, save } from '../services/storage.js'
+import { loginApi, registerApi } from '../services/authApi.js'
 
 /** 登录态 + 演示模式开关 */
 export const useAuthStore = defineStore('auth', {
@@ -8,6 +9,7 @@ export const useAuthStore = defineStore('auth', {
     user: load('user', null),
     demoMode: load('demoMode', true),
     demoProfileKey: load('demoProfileKey', 'demo'),
+    token: load('authToken', null),
   }),
   getters: {
     isLoggedIn: (s) => Boolean(s.user),
@@ -17,27 +19,29 @@ export const useAuthStore = defineStore('auth', {
     },
   },
   actions: {
-    login(phone, password) {
-      // Demo 阶段只开放项目内置演示账号，避免任意输入都被当作登录成功。
-      const isDemo = phone === DEMO_ACCOUNT.phone && password === DEMO_ACCOUNT.password
-      if (!isDemo) return null
-
-      const user = {
-        phone,
-        nickname: DEMO_ACCOUNT.nickname,
-        isDemo,
-        loginAt: new Date().toISOString(),
-      }
+    async login(phone, password) {
+      const result = await loginApi(phone, password)
+      const user = { ...result.user, isDemo: phone === DEMO_ACCOUNT.phone, loginAt: new Date().toISOString() }
       this.user = user
+      this.token = result.token
       save('user', user)
+      save('authToken', result.token)
       return user
     },
-    loginAsDemo() {
-      return this.login(DEMO_ACCOUNT.phone, DEMO_ACCOUNT.password)
+    async register(phone, password, nickname) {
+      const result = await registerApi(phone, password, nickname)
+      const user = { ...result.user, isDemo: false, loginAt: new Date().toISOString() }
+      this.user = user
+      this.token = result.token
+      save('user', user)
+      save('authToken', result.token)
+      return user
     },
     logout() {
       this.user = null
+      this.token = null
       save('user', null)
+      save('authToken', null)
     },
     setDemoMode(on) {
       this.demoMode = on

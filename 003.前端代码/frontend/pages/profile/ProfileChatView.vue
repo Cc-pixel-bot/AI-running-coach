@@ -10,7 +10,7 @@ import AppButton from '../../components/ui/AppButton.vue'
 import StatusTag from '../../components/ui/StatusTag.vue'
 import { SCREENING_QUESTIONS } from '../../domain/constants/screening.js'
 import { TARGET_TYPES } from '../../domain/templates/trainingTemplates.js'
-import { formatPace, formatClock, parseDuration } from '../../domain/utils/pace.js'
+import { formatPace, formatClock } from '../../domain/utils/pace.js'
 
 const router = useRouter()
 const profile = useProfileStore()
@@ -30,31 +30,34 @@ const EASY_PACE_OPTIONS = [300, 330, 360, 390, 420, 450]
 const INJURY_OPTIONS = ['膝盖', '脚踝', '小腿', '足部', '髂胫束']
 const TERRAIN_OPTIONS = ['田径跑道', '公路', '健身房']
 const TARGET_PRESETS = {
-  '5K': [
-    { label: '进取 25:00', sec: 25 * 60 },
-    { label: '推荐 27:30', sec: 27.5 * 60 },
-    { label: '稳妥 30:00', sec: 30 * 60 },
-  ],
   '10K': [
     { label: '进取 50分钟', sec: 50 * 60 },
     { label: '推荐 55分钟', sec: 55 * 60 },
     { label: '稳妥 60分钟', sec: 60 * 60 },
   ],
-  HM: [
-    { label: '进取 1:45:00', sec: 105 * 60 },
-    { label: '推荐 1:55:00', sec: 115 * 60 },
-    { label: '稳妥 2:05:00', sec: 125 * 60 },
-  ],
-  MARATHON: [
-    { label: '进取 3:50:00', sec: 230 * 60 },
-    { label: '推荐 4:20:00', sec: 260 * 60 },
-    { label: '稳妥 4:45:00', sec: 285 * 60 },
-  ],
 }
+const TARGET_TIME_OPTIONS = Array.from({ length: 6 }, (_, index) => {
+  const minutes = 45 + index * 5
+  return { label: `${minutes}分钟`, sec: minutes * 60 }
+})
+const TARGET_OPTIONS = [
+  { key: 'improve_5k', label: '提升5公里', distance: '5K', weeks: '—', icon: 'directions_run' },
+  ...Object.values(TARGET_TYPES),
+  { key: 'improve_hm', label: '半程马拉松', distance: 'HM', weeks: '—', icon: 'route' },
+  { key: 'improve_marathon', label: '全程马拉松', distance: 'MARATHON', weeks: '—', icon: 'emoji_events' },
+]
 
 const d = computed(() => profile.draft)
-const targetDistance = computed(() => profile.targetTypeMeta?.distance || '10K')
+const targetDistance = computed(() => '10K')
 const targetPresets = computed(() => TARGET_PRESETS[targetDistance.value] || [])
+const NUMERIC_RULES = {
+  birthYear: { label: '出生年份', min: 1970, max: 2010, integer: true },
+  heightCm: { label: '身高', min: 120, max: 230, integer: true },
+  weightKg: { label: '体重', min: 40, max: 100 },
+  runsPerWeek: { label: '最近每周跑步次数', min: 1, max: 7, integer: true },
+  longestRunKm: { label: '最近最长一次连续跑', min: 1, max: 30 },
+  best10kTimeMin: { label: '10公里最好成绩', min: 30, max: 90, integer: true },
+}
 const screening = computed(() => profile.screeningResult)
 const screeningDone = computed(
   () => Boolean(d.value.screening?.q1) && Array.isArray(d.value.screening?.q2) && Boolean(d.value.screening?.q3),
@@ -69,6 +72,16 @@ onMounted(() => {
 })
 const best5kTimeMinutes = computed(() => d.value.best5kTimeMin ?? (d.value.best5kPace ? Math.round((d.value.best5kPace * 5) / 60) : ''))
 const best10kTimeMinutes = computed(() => d.value.best10kTimeMin ?? (d.value.best10kPace ? Math.round((d.value.best10kPace * 10) / 60) : ''))
+function inputError(key) {
+  const rule = NUMERIC_RULES[key]
+  const value = d.value[key]
+  if (value === undefined || value === null || value === '') return ''
+  const number = Number(value)
+  if (!Number.isFinite(number)) return `请输入正确的${rule.label}`
+  if (rule.integer && !Number.isInteger(number)) return `请输入正确的${rule.label}`
+  if (number < rule.min || number > rule.max) return `请输入正确的${rule.label}`
+  return ''
+}
 const sectionComplete = computed(() => {
   const has = (key) => {
     const value = d.value[key]
@@ -87,6 +100,10 @@ function set(key, value) {
 }
 
 function selectTarget(typeKey) {
+  if (typeKey !== 'improve_10k') {
+    ui.toast('该训练目标正在准备中，敬请期待', 'info')
+    return
+  }
   const meta = TARGET_TYPES[typeKey]
   profile.patch({
     targetType: typeKey,
@@ -119,10 +136,10 @@ function toggleQ2(value) {
   profile.setScreening('q2', next)
 }
 
-function onTargetTimeInput(e) {
-  const text = e.target.value.trim()
-  const seconds = /^\d+(?:\.\d+)?$/.test(text) ? Number(text) * 60 : parseDuration(text)
-  profile.patch({ targetTime: seconds, targetTimeInput: text })
+function onTargetTimeSelect(e) {
+  const seconds = Number(e.target.value)
+  if (!seconds) return
+  profile.patch({ targetTime: seconds, targetTimeInput: formatClock(seconds) })
 }
 
 function onBestTimeInput(e, timeKey, paceKey, distanceKm) {
@@ -146,6 +163,12 @@ function loadDemoProfile() {
 }
 
 async function handleGenerate() {
+  const invalidKey = Object.keys(NUMERIC_RULES).find((key) => inputError(key))
+  if (invalidKey) {
+    ui.toast(inputError(invalidKey), 'error')
+    scrollToSection('basis')
+    return
+  }
   if (!screeningDone.value) {
     ui.toast('请先完成运动风险筛查（安全必答）', 'error')
     scrollToSection('screening')
@@ -166,9 +189,6 @@ async function handleGenerate() {
       <div class="px-gutter pt-3 pb-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-container text-white font-label-data text-xs font-bold">
-              智能
-            </span>
             <span class="font-headline-sm text-base text-on-surface font-bold tracking-tight">智能科学建档</span>
           </div>
           <div class="flex items-center gap-2">
@@ -238,7 +258,6 @@ async function handleGenerate() {
             <span class="w-5 h-5 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center text-xs font-bold font-label-data">1</span>
             <h2 class="font-headline-sm text-base text-on-surface font-bold">基础体征信息</h2>
           </div>
-          <span class="text-[11px] font-label-caps text-on-surface-variant">BMI 自动计算</span>
         </header>
 
         <div>
@@ -260,39 +279,46 @@ async function handleGenerate() {
         <div class="grid grid-cols-3 gap-2.5">
           <div>
             <label class="field-label">出生年份</label>
-            <input v-model.number="d.birthYear" class="field-input" type="number" min="1950" max="2015" />
+            <input
+              v-model.number="d.birthYear"
+              class="field-input"
+              :class="inputError('birthYear') && 'border-error focus:ring-error'"
+              type="number"
+              min="1970"
+              max="2010"
+              step="1"
+              @blur="inputError('birthYear')"
+            />
+            <p v-if="inputError('birthYear')" class="mt-1 text-[10px] leading-tight text-error">{{ inputError('birthYear') }}</p>
           </div>
           <div>
             <label class="field-label">身高 (cm)</label>
-            <input v-model.number="d.heightCm" class="field-input" type="number" />
+            <input
+              v-model.number="d.heightCm"
+              class="field-input"
+              :class="inputError('heightCm') && 'border-error focus:ring-error'"
+              type="number"
+              min="120"
+              max="230"
+              step="1"
+            />
+            <p v-if="inputError('heightCm')" class="mt-1 text-[10px] leading-tight text-error">{{ inputError('heightCm') }}</p>
           </div>
           <div>
             <label class="field-label">体重 (kg)</label>
-            <input v-model.number="d.weightKg" class="field-input" type="number" />
+            <input
+              v-model.number="d.weightKg"
+              class="field-input"
+              :class="inputError('weightKg') && 'border-error focus:ring-error'"
+              type="number"
+              min="40"
+              max="100"
+              step="0.1"
+            />
+            <p v-if="inputError('weightKg')" class="mt-1 text-[10px] leading-tight text-error">{{ inputError('weightKg') }}</p>
           </div>
         </div>
 
-        <div class="bg-surface-container-high/60 p-2.5 rounded-xl flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <Icon name="monitor_weight" :size="18" class="text-primary" />
-            <span class="text-xs text-on-surface font-medium">身体质量指数 (BMI)</span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <span class="font-headline-sm text-sm text-on-surface-variant font-label-data">{{ profile.bmi ?? '--' }}</span>
-            <span
-              v-if="profile.bmi"
-              class="text-[11px] px-2 py-0.5 rounded font-semibold"
-              :class="{
-                'bg-emerald-100 text-emerald-700': profile.bmiLevel.tone === 'good',
-                'bg-amber-100 text-amber-700': profile.bmiLevel.tone === 'warn',
-                'bg-error-container text-on-error-container': profile.bmiLevel.tone === 'danger',
-                'bg-info-container text-info': profile.bmiLevel.tone === 'info',
-              }"
-            >
-              {{ profile.bmiLevel.label }}
-            </span>
-          </div>
-        </div>
       </section>
 
       <!-- ② 核心训练目标 -->
@@ -302,12 +328,11 @@ async function handleGenerate() {
             <span class="w-5 h-5 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center text-xs font-bold font-label-data">2</span>
             <h2 class="font-headline-sm text-base text-on-surface font-bold">设定核心训练目标</h2>
           </div>
-          <span class="text-[11px] font-label-data text-primary font-semibold">四选一</span>
         </header>
 
         <div class="grid grid-cols-2 gap-2.5">
           <button
-            v-for="t in Object.values(TARGET_TYPES)"
+            v-for="t in TARGET_OPTIONS"
             :key="t.key"
             class="target-card p-3 rounded-xl border bg-surface text-left transition-all relative flex flex-col justify-between h-24 hover:border-primary-container"
             :class="d.targetType === t.key ? 'border-primary-container bg-primary-fixed/40' : 'border-surface-container-highest'"
@@ -333,56 +358,47 @@ async function handleGenerate() {
                 class="text-[10px] font-label-data bg-surface-container-high text-on-surface-variant px-1.5 py-0.5 rounded font-bold"
                 :class="d.targetType === t.key ? 'mr-6' : ''"
               >
-                {{ t.weeks }} 周周期
+                {{ t.key === 'improve_10k' ? `${t.weeks} 周周期` : '敬请期待' }}
               </span>
             </div>
             <div>
               <span class="text-xs font-bold text-on-surface block">{{ t.label }}</span>
               <span class="text-[11px] text-on-surface-variant">
-                {{ { '5K': '速度爆发·心肺跃升', '10K': '耐力与节奏巡航突破', HM: '有氧耐力与能量代谢', MARATHON: '长距离与极限耐受' }[t.distance] }}
+                {{ t.distance === '10K' ? '耐力与节奏巡航突破' : '暂未开放' }}
               </span>
             </div>
           </button>
         </div>
 
         <div class="bg-surface-container-low p-3.5 rounded-xl space-y-2 border border-surface-container">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-on-surface">目标完成成绩</span>
-            <span class="text-[11px] font-label-data text-primary font-bold">
-              智程推荐：{{ targetPresets[1]?.label.replace('推荐 ', '') || '--' }}
-            </span>
-          </div>
           <div class="grid grid-cols-2 gap-2">
             <div class="bg-white p-2.5 rounded-lg border border-surface-container flex items-center justify-between">
               <span class="text-xs text-on-surface-variant">目标用时</span>
-              <span class="text-sm font-bold text-primary font-label-data">
-                {{ profile.targetTotalSec ? formatClock(profile.targetTotalSec) : '--' }}
-              </span>
+              <div class="relative shrink-0">
+                <select
+                  class="!w-24 !h-8 !min-h-0 !py-0 !pl-1 !pr-6 text-right text-sm font-bold text-primary font-label-data bg-transparent appearance-none cursor-pointer"
+                  :value="profile.targetTotalSec || ''"
+                  aria-label="选择目标用时"
+                  @change="onTargetTimeSelect"
+                >
+                  <option value="" disabled>选择目标</option>
+                  <option v-for="option in TARGET_TIME_OPTIONS" :key="option.sec" :value="option.sec">
+                    {{ option.label }}
+                  </option>
+                </select>
+                <span
+                  class="pointer-events-none absolute right-1 top-1/2 w-2 h-2 border-r-2 border-b-2 border-primary rotate-45 -translate-y-[70%]"
+                  aria-hidden="true"
+                />
+              </div>
             </div>
+
             <div class="bg-white p-2.5 rounded-lg border border-surface-container flex items-center justify-between">
               <span class="text-xs text-on-surface-variant">换算配速</span>
               <span class="text-sm font-bold text-primary font-label-data">
                 {{ profile.targetPace ? `${formatPace(profile.targetPace)}/公里` : '--' }}
               </span>
             </div>
-          </div>
-          <input
-            class="field-input"
-            type="text"
-            :value="d.targetTimeInput || ''"
-            @input="onTargetTimeInput"
-          />
-          <div class="flex items-center gap-1.5 pt-1 flex-wrap">
-            <button
-              v-for="p in targetPresets"
-              :key="p.label"
-              class="text-[11px] px-2 py-1 rounded bg-surface hover:bg-surface-container text-on-surface font-label-data border border-surface-container-highest"
-              :class="profile.targetTotalSec === p.sec && 'bg-primary-fixed text-primary font-bold border-primary-container/40'"
-              type="button"
-              @click="profile.patch({ targetTime: p.sec, targetTimeInput: formatClock(p.sec) })"
-            >
-              {{ p.label }}
-            </button>
           </div>
         </div>
 
@@ -417,45 +433,45 @@ async function handleGenerate() {
         <div class="grid grid-cols-2 gap-2.5">
           <div class="flex items-center gap-2">
             <label class="field-label flex-1 !mb-0 leading-tight">最近每周跑步次数</label>
-            <input v-model.number="d.runsPerWeek" class="field-input w-16 shrink-0 text-center" type="number" min="1" max="7" />
+            <input
+              v-model.number="d.runsPerWeek"
+              class="field-input w-16 shrink-0 text-center"
+              :class="inputError('runsPerWeek') && 'border-error focus:ring-error'"
+              type="number"
+              min="1"
+              max="7"
+              step="1"
+            />
           </div>
           <div class="flex items-center gap-2">
             <label class="field-label flex-1 !mb-0 leading-tight">最近最长一次连续跑（公里）</label>
-            <input v-model.number="d.longestRunKm" class="field-input w-16 shrink-0 text-center" type="number" />
+            <input
+              v-model.number="d.longestRunKm"
+              class="field-input w-16 shrink-0 text-center"
+              :class="inputError('longestRunKm') && 'border-error focus:ring-error'"
+              type="number"
+              min="1"
+              max="30"
+              step="0.1"
+            />
           </div>
         </div>
 
         <div class="space-y-1.5">
           <div class="flex items-center justify-between">
             <label class="field-label !mb-0">最近最好的一次成绩</label>
-            <button
-              class="text-[11px] font-label-data text-on-surface-variant hover:text-primary flex items-center gap-1"
-              type="button"
-              @click="profile.patch({ best5kTimeMin: null, best10kTimeMin: null, best5kPace: null, best10kPace: null, bestHmPace: null, bestMarPace: null })"
-            >
-              <Icon name="help_outline" :size="14" />暂无最好成绩记录
-            </button>
           </div>
-          <div class="grid grid-cols-2 gap-2.5">
+          <div v-if="d.targetType === 'improve_10k'" class="grid grid-cols-1 gap-2.5">
             <div class="flex items-center gap-2">
-              <label class="field-label flex-1 !mb-0 leading-tight">5公里最好成绩（分钟）</label>
+              <label class="field-label flex-1 !mb-0 leading-tight">10公里最好成绩（分钟，选填）</label>
               <input
-                class="field-input w-16 shrink-0 text-center"
+                class="field-input w-16 shrink-0 text-center appearance-none"
                 type="number"
-                min="1"
-                step="1"
-                :value="best5kTimeMinutes"
-                @input="onBestTimeInput($event, 'best5kTimeMin', 'best5kPace', 5)"
-              />
-            </div>
-            <div class="flex items-center gap-2">
-              <label class="field-label flex-1 !mb-0 leading-tight">10公里最好成绩（分钟）</label>
-              <input
-                class="field-input w-16 shrink-0 text-center"
-                type="number"
-                min="1"
+                min="30"
+                max="90"
                 step="1"
                 :value="best10kTimeMinutes"
+                :class="inputError('best10kTimeMin') && 'border-error focus:ring-error'"
                 @input="onBestTimeInput($event, 'best10kTimeMin', 'best10kPace', 10)"
               />
             </div>
@@ -527,15 +543,9 @@ async function handleGenerate() {
           </div>
           <StatusTag tone="danger" icon="shield">安全必答</StatusTag>
         </header>
-        <p class="text-xs text-on-surface-variant leading-relaxed">
-          以下三问来自运动测试与处方指南的预参与筛查。
-          <span class="font-semibold text-error">命中任一症状将不生成训练计划。</span>
-        </p>
-
         <div>
           <div class="flex items-center justify-between mb-2">
             <label class="field-label !mb-0">近期伤病与不适排查（可多选）</label>
-            <span class="text-[11px] text-on-surface-variant">动态触发防伤方案</span>
           </div>
           <div class="grid grid-cols-3 gap-2">
             <button

@@ -71,6 +71,10 @@ function selectWeek(w) {
 }
 
 function openSession(session) {
+  if (session.id === todaySessionId.value) {
+    router.push('/run/prep')
+    return
+  }
   router.push({ name: 'session-detail', params: { id: session.id } })
 }
 </script>
@@ -78,8 +82,8 @@ function openSession(session) {
 <template>
   <main class="plan-overview min-h-screen bg-surface">
     <div v-if="!plan" class="px-gutter pt-20 pb-10 text-center space-y-4">
-      <div class="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center mx-auto">
-        <Icon name="calendar_today" :size="28" class="text-outline" />
+      <div class="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center mx-auto" aria-hidden="true">
+        <span class="w-8 h-8 rounded-md border-2 border-outline flex items-end justify-center pb-0.5 text-[10px] font-semibold text-on-surface-variant">日程</span>
       </div>
       <p class="text-on-surface-variant">还没有训练计划，先完成档案建档吧。</p>
       <AppButton variant="primary" @click="router.push(profile.confirmed ? '/profile/confirm' : '/profile')">
@@ -213,7 +217,7 @@ function openSession(session) {
                     type="button"
                     @click="selectWeek(w.week)"
                   >
-                    第{{ w.week }}周训练计划
+                    第{{ w.week }}周
                   </button>
                 </div>
               </div>

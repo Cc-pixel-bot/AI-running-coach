@@ -35,8 +35,9 @@ function resetAll() {
   profile.reset()
   planStore.reset()
   history.reset()
+  auth.logout()
   ui.toast('已重置本地演示数据', 'success')
-  router.push('/profile')
+  router.replace('/login')
 }
 </script>
 

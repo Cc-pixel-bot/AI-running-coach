@@ -76,7 +76,7 @@ async function submit() {
   await new Promise((r) => setTimeout(r, 1600)) // 模拟「正在分析你的这次训练…」
   await run.submitFeedback({ ...form.value })
   submitting.value = false
-  router.push('/summary')
+  router.push({ name: 'run-prep', query: { session: run.record?.sessionId, feedbackSubmitted: '1' } })
 }
 </script>
 
@@ -242,7 +242,7 @@ async function submit() {
     <div class="action-bar">
       <div class="action-bar-inner">
         <AppButton variant="primary" :disabled="submitting" icon="auto_awesome" @click="submit">
-          {{ submitting ? '正在分析你的这次训练…' : '提交并调整训练计划' }}
+          {{ submitting ? '正在分析你的这次训练…' : '提交反馈' }}
         </AppButton>
       </div>
     </div>

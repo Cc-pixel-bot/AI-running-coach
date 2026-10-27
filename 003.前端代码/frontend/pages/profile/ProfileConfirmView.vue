@@ -1,8 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '../../stores/profile.js'
-import { usePlanStore } from '../../stores/plan.js'
 import { useUiStore } from '../../stores/ui.js'
 import Icon from '../../components/ui/Icon.vue'
 import coachAvatar from '../../assets/coach-avatar.png'
@@ -12,10 +11,8 @@ import { formatPace, formatClock } from '../../domain/utils/pace.js'
 
 const router = useRouter()
 const profile = useProfileStore()
-const plan = usePlanStore()
 const ui = useUiStore()
 
-const loading = ref(false)
 const d = computed(() => profile.draft)
 const screening = computed(() => profile.screeningResult)
 
@@ -117,14 +114,7 @@ async function handleGeneratePlan() {
     })
     return
   }
-  loading.value = true
-  const result = await plan.generate(profile.toEngineProfile())
-  loading.value = false
-  if (result.blocked) {
-    ui.toast('安全闸门未通过，未生成计划', 'error')
-    return
-  }
-  router.push('/plan')
+  router.push('/profile/plan-confirm')
 }
 </script>
 
@@ -254,7 +244,7 @@ async function handleGeneratePlan() {
       <!-- CTA -->
       <div class="space-y-2 pt-2">
         <AppButton variant="primary" :disabled="loading" @click="handleGeneratePlan">
-          {{ loading ? '智程正在生成训练计划…' : '确认档案并生成训练计划' }}
+          查看训练计划
         </AppButton>
         <AppButton variant="secondary" icon="edit" @click="router.push('/profile')">返回修改信息</AppButton>
       </div>
