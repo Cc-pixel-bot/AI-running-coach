@@ -1,0 +1,21 @@
+# ---- AI 工具与本地环境 ----
+.claude/
+.work/
+
+# ---- 依赖与构建产物 ----
+node_modules/
+dist/
+dist-ssr/
+coverage/
+
+# ---- 编辑器 / 系统 ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- 日志 ----
+npm-debug.log*
+yarn-error.log*
+*.log

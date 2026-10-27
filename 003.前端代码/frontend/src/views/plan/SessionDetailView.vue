@@ -1,0 +1,446 @@
+<script setup>
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { usePlanStore } from '../../stores/plan.js'
+import { useUiStore } from '../../stores/ui.js'
+import AppHeader from '../../components/layout/AppHeader.vue'
+import Icon from '../../components/ui/Icon.vue'
+import StatusTag from '../../components/ui/StatusTag.vue'
+import AppButton from '../../components/ui/AppButton.vue'
+import CoachBanner from '../../components/coach/CoachBanner.vue'
+import { formatPace } from '../../domain/utils/pace.js'
+import { STOP_SIGNALS } from '../../domain/constants/screening.js'
+
+const route = useRoute()
+const router = useRouter()
+const planStore = usePlanStore()
+const ui = useUiStore()
+
+const warmupDone = ref([])
+const cooldownDone = ref([])
+const showStructure = ref(false)
+
+const session = computed(() => {
+  const id = route.params.id || route.query.session
+  for (const w of planStore.plan?.weeks || []) {
+    const hit = w.sessions.find((s) => s.id === id)
+    if (hit) return { ...hit, weekPlan: w }
+  }
+
+  // 从“今日训练”入口进入时，默认展示下一节待训练课次。
+  const next = planStore.upcomingSessions?.[0]
+  if (next) {
+    const weekPlan = planStore.plan?.weeks?.find((w) => w.week === next.week)
+    return { ...next, weekPlan }
+  }
+
+  return null
+})
+
+const isStrength = computed(() => session.value?.type === 'strength')
+
+function toggle(list, index) {
+  const i = list.value.indexOf(index)
+  if (i >= 0) list.value.splice(i, 1)
+  else list.value.push(index)
+}
+
+function startRun() {
+  if (!session.value) return
+  if (isStrength.value) {
+    ui.toast('力量课为线下完成，勾选热身与拉伸后可直接标记完成', 'info')
+    return
+  }
+  router.push({ name: 'run-live', query: { session: session.value.id } })
+}
+
+const isTodayTraining = computed(() => route.name === 'run-prep')
+</script>
+
+<template>
+  <main class="min-h-screen bg-surface">
+    <AppHeader
+      v-if="!isTodayTraining"
+      :title="isTodayTraining ? '今日训练' : '课次详情'"
+      :subtitle="isTodayTraining ? '' : (session ? `第${session.week}周·${session.dayLabel}` : '')"
+      :back="!isTodayTraining"
+      :fixed="false"
+      :show-avatar="false"
+    />
+
+    <div v-if="!session" class="px-gutter pt-20 text-center">
+      <p class="text-on-surface-variant">未找到该课次。</p>
+      <AppButton class="mt-4" variant="secondary" @click="router.push('/plan')">返回计划总览</AppButton>
+    </div>
+
+    <!-- 固定顶部栏高度为 64px，内容从栏下方开始，避免首张状态卡被遮挡。 -->
+    <div v-else class="pb-28">
+      <div class="px-gutter space-y-space-md">
+        <!-- 标题 + 状态 -->
+        <div class="flex items-center justify-between">
+          <StatusTag tone="brand" pulse>{{ session.weekPlan.typeName }} · {{ session.weekPlan.focus }}</StatusTag>
+          <StatusTag v-if="session.status === 'done'" tone="good" icon="check_circle">已完成</StatusTag>
+        </div>
+        <div>
+          <h2 class="font-headline-lg text-headline-lg tracking-tight text-on-surface">{{ session.title }}</h2>
+          <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">{{ session.description }}</p>
+        </div>
+
+        <!-- 四项指标 -->
+        <div class="session-metrics grid grid-cols-4 gap-space-xs bg-surface-container-lowest rounded-xl p-3 shadow-card">
+          <div class="session-metric flex flex-col items-center text-center">
+            <span class="session-metric-label font-label-caps text-label-caps text-on-surface-variant">目标距离</span>
+            <div class="session-metric-value flex items-baseline gap-0.5">
+              <span class="font-metric-huge-mobile text-metric-huge-mobile text-on-surface tracking-tight">
+                {{ session.distanceKm ? session.distanceKm.toFixed(1) : '—' }}
+              </span>
+              <span class="font-label-data text-label-data text-on-surface-variant">公里</span>
+            </div>
+          </div>
+          <div class="session-metric flex flex-col items-center text-center">
+            <span class="session-metric-label font-label-caps text-label-caps text-on-surface-variant">预估耗时</span>
+            <div class="session-metric-value flex items-baseline gap-0.5">
+              <span class="font-metric-huge-mobile text-metric-huge-mobile text-on-surface tracking-tight">{{ session.durationMin }}</span>
+              <span class="font-label-data text-label-data text-on-surface-variant">分钟</span>
+            </div>
+          </div>
+          <div class="session-metric flex flex-col items-center text-center">
+            <span class="session-metric-label font-label-caps text-label-caps text-on-surface-variant">目标配速</span>
+            <div class="session-metric-value flex items-baseline">
+              <span class="session-pace-value font-headline-sm text-headline-sm text-on-surface">
+                {{ session.intensity.paceHigh ? formatPace(session.intensity.paceLow) : '—' }}
+              </span>
+            </div>
+            <span class="session-metric-note font-body-sm text-body-sm text-on-surface-variant">
+              {{ session.intensity.paceHigh ? `~${formatPace(session.intensity.paceHigh)}` : '主观强度' }}
+            </span>
+          </div>
+          <div class="session-metric flex flex-col items-center text-center">
+            <span class="session-metric-label font-label-caps text-label-caps text-on-surface-variant">体感强度</span>
+            <div class="session-metric-value flex items-baseline">
+              <span class="session-intensity-value font-headline-sm text-headline-sm text-primary-container">强度 {{ session.intensity.rpe?.[0] }}</span>
+            </div>
+            <span v-if="!isTodayTraining" class="session-metric-note font-body-sm text-body-sm text-on-surface-variant">{{ session.intensity.talkTest }}</span>
+          </div>
+        </div>
+
+        <AppButton
+          v-if="isTodayTraining && !isStrength"
+          class="w-full"
+          variant="primary"
+          icon="directions_run"
+          @click="startRun"
+        >
+          开始跑步
+        </AppButton>
+
+        <!-- 教练心法 -->
+        <CoachBanner
+          v-if="!isTodayTraining"
+          title="智程教练 · 跑前心法"
+          :text="session.coachQuote"
+          icon="record_voice_over"
+          :tag="session.intensity.hrZone !== '—' ? session.intensity.hrZone : ''"
+        />
+
+        <!-- 训练说明（可展开） -->
+        <section class="bg-surface-container-lowest rounded-xl p-space-md shadow-card">
+          <button
+            class="session-section-header w-full flex items-center justify-between"
+            type="button"
+            @click="showStructure = !showStructure"
+          >
+            <span class="flex items-center gap-1.5 font-headline-sm text-headline-sm text-on-surface font-bold">
+              <span class="section-bar" />训练说明与结构
+            </span>
+            <span class="ml-auto flex items-center gap-1 font-body-sm text-body-sm text-primary">
+              {{ showStructure ? '收起详情' : '展开详情' }}
+              <Icon :name="showStructure ? 'expand_less' : 'expand_more'" :size="18" class="text-primary" />
+            </span>
+          </button>
+          <div v-if="showStructure" class="pt-3 space-y-2">
+            <div class="bg-surface-container-low rounded-lg p-3">
+              <p class="font-body-sm text-body-sm text-on-surface leading-relaxed">
+                {{ session.description }}
+              </p>
+              <p v-if="session.structure" class="font-body-sm text-body-sm text-primary mt-1">
+                结构：{{ session.structure.pattern }}
+              </p>
+              <p v-if="session.structure" class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+                热身{{ session.structure.warmupKm }}公里（轻松）→主体{{ session.structure.mainKm }}公里（{{
+                  session.structure.mainLevel === 'tempo' ? '节奏' : session.structure.mainLevel === 'interval' ? '间歇' : '目标配速'
+                }}档）→放松{{ session.structure.cooldownKm }}公里（轻松）
+              </p>
+            </div>
+            <div class="bg-surface-container-low rounded-lg p-3">
+              <p class="font-label-caps text-label-caps text-on-surface-variant">强度锚点（三轨任选其一）</p>
+              <div class="pt-1 space-y-1">
+                <p class="text-body-sm"><span class="text-on-surface-variant">主观用力：</span>{{ session.intensity.effort }}（强度 {{ session.intensity.rpe?.[0] }}–{{ session.intensity.rpe?.[1] }}）</p>
+                <p v-if="!isTodayTraining" class="text-body-sm"><span class="text-on-surface-variant">说话测试：</span>{{ session.intensity.talkTest }}</p>
+                <p class="text-body-sm"><span class="text-on-surface-variant">心率区间：</span>{{ session.intensity.hrZone }}</p>
+                <p v-if="session.intensity.paceHigh" class="text-body-sm">
+                  <span class="text-on-surface-variant">配速偏移：</span>{{ formatPace(session.intensity.paceLow) }}–{{ formatPace(session.intensity.paceHigh) }}/公里
+                </p>
+              </div>
+            </div>
+            <div v-if="session.adaptationNote" class="bg-primary-fixed/60 rounded-lg p-3 flex gap-2">
+              <Icon name="lightbulb" :size="16" class="text-primary shrink-0 mt-0.5" />
+              <p class="text-body-sm text-on-surface leading-relaxed">适配说明：{{ session.adaptationNote }}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 力量课：动作清单 -->
+        <section v-if="isStrength" class="bg-surface-container-lowest rounded-xl p-space-md shadow-card">
+          <div class="session-section-header flex items-center justify-between mb-2">
+            <span class="flex items-center gap-1.5 font-headline-sm text-headline-sm text-on-surface font-bold">
+              <span class="w-2 h-4 rounded-full bg-secondary-container inline-block" />力量动作清单
+            </span>
+            <span class="font-label-data text-label-data text-secondary">{{ session.exercises?.length || 0 }} 个动作</span>
+          </div>
+          <div class="space-y-1.5">
+            <div
+              v-for="(e, i) in session.exercises || []"
+              :key="i"
+              class="flex items-center justify-between bg-surface-container-low rounded-lg px-3 py-2"
+            >
+              <span class="text-body-sm text-on-surface">{{ i + 1 }}. {{ e.name }}</span>
+              <span class="font-label-data text-label-data text-on-surface-variant">{{ e.dose }}</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 练前动态热身 -->
+        <section v-if="!isStrength" class="pt-space-sm">
+          <div class="session-section-header flex items-center justify-between mb-space-xs">
+            <h3 class="session-section-title-offset font-headline-sm text-headline-sm text-on-surface">
+              练前动态激活
+            </h3>
+            <span class="font-label-data text-label-data text-secondary">
+              {{ session.warmup?.length || 0 }} 个动作 · 5–8 分钟
+            </span>
+          </div>
+
+          <div class="relative w-full h-32 rounded-xl overflow-hidden shadow-sm flex items-end p-3 mb-space-xs bg-inverse-surface">
+            <div class="absolute inset-0 bg-gradient-to-br from-primary-container/30 via-surface-container to-inverse-surface" />
+            <div class="relative z-10 w-full flex items-center justify-between">
+              <div class="flex flex-col text-on-primary">
+                <span class="font-body-lg text-body-lg font-bold">跑者下肢激活跟练</span>
+                <span class="font-body-sm text-body-sm text-on-primary/80">避免跟腱硬拉，提升髋部活动度</span>
+              </div>
+              <button
+                aria-label="播放跟练视频"
+                class="w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg active:scale-95"
+                type="button"
+                @click="ui.toast('当前为演示内容，教学视频暂未接入', 'info')"
+              >
+                <Icon name="play_arrow" :size="24" filled />
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-surface-container-lowest rounded-xl p-3 shadow-card flex flex-col gap-1">
+            <label
+              v-for="(w, i) in session.warmup || []"
+              :key="w.id"
+              class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer select-none"
+            >
+              <div class="flex items-center gap-2.5 min-w-0">
+                <input
+                  type="checkbox"
+                  class="w-4 h-4 rounded accent-primary-container cursor-pointer shrink-0"
+                  :checked="warmupDone.includes(i)"
+                  @change="toggle(warmupDone, i)"
+                />
+                <span class="font-body-md text-body-md text-on-surface truncate">{{ w.name }}</span>
+              </div>
+              <span class="font-label-data text-label-data text-on-surface-variant shrink-0">{{ w.dose }}</span>
+            </label>
+            <p class="text-[11px] text-outline pt-1 leading-relaxed">
+              跳过整个热身开始质量课时会弹出风险提示；疼痛、头晕、胸闷或动作导致锐痛不属于正常热身反应。
+            </p>
+          </div>
+        </section>
+
+        <!-- 练后静态拉伸 -->
+        <section v-if="!isStrength" class="pt-space-sm">
+          <div class="session-section-header flex items-center justify-between mb-space-xs">
+            <h3 class="session-section-title-offset font-headline-sm text-headline-sm text-on-surface">练后静态拉伸</h3>
+            <span class="font-label-data text-label-data text-on-surface-variant">
+              {{ session.cooldown?.length || 0 }} 处放松 · 6 分钟
+            </span>
+          </div>
+
+          <div class="relative w-full h-32 rounded-xl overflow-hidden shadow-sm flex items-end p-3 mb-space-xs bg-inverse-surface">
+            <div class="absolute inset-0 bg-gradient-to-br from-secondary-container/40 via-surface-container to-inverse-surface" />
+            <div class="relative z-10 w-full flex items-center justify-between">
+              <div class="flex flex-col text-on-primary">
+                <span class="font-body-lg text-body-lg font-bold">跑后全身静态拉伸</span>
+                <span class="font-body-sm text-body-sm text-on-primary/80">放松腿部肌群，帮助身体平稳恢复</span>
+              </div>
+              <button
+                aria-label="播放拉伸教学视频"
+                class="w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg active:scale-95"
+                type="button"
+                @click="ui.toast('当前为演示内容，教学视频暂未接入', 'info')"
+              >
+                <Icon name="play_arrow" :size="24" filled />
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-surface-container-lowest rounded-xl p-3 shadow-card flex flex-col gap-1">
+            <label
+              v-for="(c, i) in session.cooldown || []"
+              :key="c.id"
+              class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer select-none"
+            >
+              <div class="flex items-center gap-2.5 min-w-0">
+                <input
+                  type="checkbox"
+                  class="w-4 h-4 rounded accent-primary-container cursor-pointer shrink-0"
+                  :checked="cooldownDone.includes(i)"
+                  :aria-label="`完成${c.name}`"
+                  @change="toggle(cooldownDone, i)"
+                />
+                <div class="min-w-0">
+                  <span class="font-body-md text-body-md text-on-surface block truncate">{{ c.name }}</span>
+                  <span class="text-[10px] text-outline truncate block">{{ c.points }}</span>
+                </div>
+              </div>
+              <span class="font-label-data text-label-data text-on-surface-variant shrink-0">{{ c.dose }}</span>
+            </label>
+          </div>
+        </section>
+
+        <!-- 安全提示：训练中止标准（PRD §5.5.2） -->
+        <section class="pt-space-xs">
+          <div class="bg-error-container/70 rounded-xl p-3 shadow-sm">
+            <div class="flex items-start gap-space-sm">
+              <div class="w-7 h-7 rounded-full bg-error flex-shrink-0 flex items-center justify-center text-on-error shadow-sm mt-0.5">
+                <Icon name="warning" :size="16" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <span class="font-label-caps text-label-caps text-on-error-container uppercase tracking-wider">安全第一防线</span>
+                <p class="font-body-sm text-body-sm text-on-error-container mt-0.5 leading-snug">
+                  若奔跑中出现以下任一信号，请立即转为慢走并终止训练。
+                </p>
+                <ul class="mt-1.5 space-y-1">
+                  <li
+                    v-for="signal in STOP_SIGNALS"
+                    :key="signal"
+                    class="flex items-start gap-1.5 font-body-sm text-body-sm text-on-error-container leading-snug"
+                  >
+                    <Icon name="stop_circle" :size="13" class="shrink-0 mt-0.5" />
+                    <span>{{ signal }}</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 底部 CTA -->
+      <div v-if="!isTodayTraining" class="action-bar">
+        <div class="action-bar-inner">
+          <div class="flex items-center gap-3">
+            <button
+              class="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-on-surface active:scale-95 shrink-0"
+              type="button"
+              @click="ui.toast('已加入训练提醒', 'info')"
+            >
+              <Icon name="tune" :size="22" />
+            </button>
+            <AppButton variant="primary" icon="arrow_forward" @click="startRun">
+              {{ isStrength ? '标记力量课完成' : '开始跑步' }}
+            </AppButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</template>
+
+<style scoped>
+.session-metrics {
+  align-items: stretch;
+}
+
+.session-metric {
+  min-width: 0;
+}
+
+.session-section-header {
+  min-height: 28px;
+}
+
+.session-section-title-offset {
+  padding-left: 14px;
+}
+
+.session-section-header > :last-child {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.session-metric-label {
+  height: 20px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.session-metric-value {
+  height: 44px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.session-metric-value > .font-metric-huge-mobile {
+  font-size: 30px;
+  line-height: 34px;
+  letter-spacing: -0.02em;
+}
+
+.session-metric-value > .font-label-data {
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+
+.session-metric-note {
+  height: 24px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.session-pace-value {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+}
+
+.session-intensity-value {
+  font-size: 20px;
+  line-height: 26px;
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .session-metrics {
+    padding-inline: 8px;
+  }
+
+  .session-metric-label {
+    font-size: 9px;
+  }
+
+  .session-pace-value {
+    font-size: 19px;
+  }
+
+  .session-intensity-value {
+    font-size: 18px;
+  }
+}
+</style>

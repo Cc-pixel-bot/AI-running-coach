@@ -1,0 +1,28 @@
+{
+  "name": "ai-running-coach-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "智程 · AI 跑步教练 Web Demo（Vue 3 + Vite）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint:styles": "tailwindcss -i ./src/styles/tokens.css -o /dev/null --minify"
+  },
+  "dependencies": {
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}
