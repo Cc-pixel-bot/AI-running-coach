@@ -11,10 +11,11 @@
 ```bash
 cd 003.前端代码/frontend
 npm install
-npm run dev        # 开发模式 → http://localhost:5173
-npm run build      # 生产构建 → dist/
-npm run preview    # 预览构建产物
-npm test           # 引擎与闭环测试（36 个用例）
+npm run dev              # 开发模式 → http://localhost:5173
+npm run build            # 生产构建 → dist/
+npm run preview          # 预览构建产物
+npm test                 # 引擎与闭环测试（36 个用例）
+npm run sync:prototypes  # 构建并同步 002 原型目录（见 §9）
 ```
 
 **演示账号**：`123` / `123456`。
@@ -202,3 +203,29 @@ frontend/
 - 动作教学视频使用官方公开内容占位，未做播放与倍速控制；
 - 半马 / 全马目标可生成完整周期计划，但课次内容与 10km 同构（Demo 只做 10km 完整闭环）；
 - 未接手表数据、天气 API、地图 SDK。
+
+## 9. 原型同步（002 目录）
+
+`002.产品UI原型/1比1原型图/` 不是独立设计的静态稿，而是**实现的静态快照**：
+每个入口页 = `dist/index.html` + 一个预设的 hash 路由跳转，共用同一份构建产物，
+因此原型与实现始终视觉一致，不存在「原型改了代码没改」的漂移。
+
+维护的 7 个页面：
+
+| 文件 | 路由 |
+| --- | --- |
+| `01-登录页.html` | `#/login` |
+| `02-AI建档页.html` | `#/profile` |
+| `03-档案确认页.html` | `#/profile/confirm` |
+| `04-计划总览页.html` | `#/plan` |
+| `05-今日训练页.html` | `#/run/prep` |
+| `06-GPS训练执行页.html` | `#/run/live` |
+| `07-我的页.html` | `#/me` |
+
+改动前端后执行 `npm run sync:prototypes` 即可一键重新生成（内部会先跑一次构建）。
+其余实现页面（训练反馈、训练总结、计划调整、训练记录、数据趋势）不在原型目录单独出图，
+可在应用内通过导航到达。
+
+> **查看方式**：原型页同样是 `<script type="module">`，浏览器直接双击打开会被 CORS 拦截，
+> 需用静态服务器访问，例如在仓库根目录执行
+> `npx serve "002.产品UI原型/1比1原型图"`。

@@ -10,6 +10,7 @@
     "preview": "vite preview --port 4173",
     "test": "vitest run",
     "test:watch": "vitest",
+    "sync:prototypes": "node scripts/sync-prototypes.mjs",
     "lint:styles": "tailwindcss -i ./styles/tokens.css -o /dev/null --minify"
   },
   "dependencies": {
