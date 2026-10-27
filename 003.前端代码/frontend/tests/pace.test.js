@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { formatPace, formatDuration, parseDuration, estimateDurationSec } from '../src/domain/utils/pace.js'
-import { paceRangeOf, PACE_OFFSET_SCALE } from '../src/domain/constants/intensity.js'
+import { formatPace, formatDuration, parseDuration, estimateDurationSec } from '../domain/utils/pace.js'
+import { paceRangeOf, PACE_OFFSET_SCALE } from '../domain/constants/intensity.js'
 
 describe('配速与时长格式化', () => {
   it('秒 → mm\'ss"', () => {

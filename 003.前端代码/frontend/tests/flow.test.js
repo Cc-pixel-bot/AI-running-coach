@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { usePlanStore } from '../src/stores/plan.js'
-import { useRunStore } from '../src/stores/run.js'
-import { useProfileStore } from '../src/stores/profile.js'
-import { DEMO_PROFILE } from '../src/data/demoSeed.js'
+import { usePlanStore } from '../stores/plan.js'
+import { useRunStore } from '../stores/run.js'
+import { useProfileStore } from '../stores/profile.js'
+import { DEMO_PROFILE } from '../data/demoSeed.js'
 
 /**
  * 闭环集成测试：档案 → 计划 → 训练 → 反馈 → 调整 → 计划真的变了

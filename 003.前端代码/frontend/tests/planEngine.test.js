@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { generatePlan, computeWeeklyVolumes, computeStartWeeklyKm } from '../src/domain/engine/planEngine.js'
-import { evaluateScreening } from '../src/domain/constants/screening.js'
-import { TEMPLATES } from '../src/domain/templates/trainingTemplates.js'
-import { DEMO_PROFILE } from '../src/data/demoSeed.js'
+import { generatePlan, computeWeeklyVolumes, computeStartWeeklyKm } from '../domain/engine/planEngine.js'
+import { evaluateScreening } from '../domain/constants/screening.js'
+import { TEMPLATES } from '../domain/templates/trainingTemplates.js'
+import { DEMO_PROFILE } from '../data/demoSeed.js'
 
 const profile = {
   ...DEMO_PROFILE,

@@ -46,12 +46,11 @@ frontend/
 │   ├── planEngine.test.js         # 训练量规则、安全闸门、适配依据
 │   ├── adjustEngine.test.js       # 规则引擎 P0–P11
 │   └── flow.test.js               # 主链路闭环集成测试
-└── src/
-    ├── main.js                    # 应用装配 + 档案持久化订阅
-    ├── App.vue                    # 布局壳：页面切换 / 底部导航 / Toast / 弹窗
-    ├── router/index.js            # 13 条路由 + 登录守卫（hash 模式，静态托管可直接跑）
+├── main.js                        # 应用装配 + 档案持久化订阅
+├── App.vue                        # 布局壳：页面切换 / 底部导航 / Toast / 弹窗
+├── router/index.js                # 13 条路由 + 登录守卫（hash 模式，静态托管可直接跑）
     │
-    ├── domain/                    # ★ 纯逻辑层：无 Vue 依赖，可独立回归测试
+├── domain/                        # ★ 纯逻辑层：无 Vue 依赖，可独立回归测试
     │   ├── constants/
     │   │   ├── intensity.js       # 7 档强度 + 三锚点 + 配速偏移缩放
     │   │   ├── screening.js       # ACSM 预参与筛查（PAR-Q+ 简化版）
@@ -64,12 +63,12 @@ frontend/
     │   ├── templates/trainingTemplates.js # 6 个模板的「周蓝图」（周期长度对齐官方计划）
     │   └── utils/                 # 配速/时长格式化、数值工具
     │
-    ├── services/                  # 可替换为真实 API 的服务层
+├── services/                      # 可替换为真实 API 的服务层
     │   ├── gpsSimulator.js        # GPS 记录模拟（1Hz、漂移过滤、自动暂停、滑动窗口配速）
     │   ├── voiceCoach.js          # 语音陪跑话术包（PRD §C3 五类触发）
     │   └── storage.js             # localStorage 持久化（模拟后端）
     │
-    ├── stores/                    # Pinia 状态
+├── stores/                        # Pinia 状态
     │   ├── auth.js                # 登录态 + 演示模式 + 预置档案切换
     │   ├── profile.js             # 建档草稿、BMI、可达性派生值
     │   ├── plan.js                # 计划生成/确认/按周解锁/调整采纳
@@ -77,30 +76,31 @@ frontend/
     │   ├── history.js             # 历史记录与趋势（PRD §E4）
     │   └── ui.js                  # Toast / 弹窗
     │
-    ├── data/
+├── data/
     │   ├── demoSeed.js            # 演示账号、3 个预置档案、3 周历史记录
     │   └── exercises.js           # 热身/拉伸/力量动作库（PRD §B5.1 / §B5.2 / §5.2）
     │
-    ├── components/
+├── components/
     │   ├── layout/                # AppHeader、AppTabBar
-    │   ├── ui/                    # AppButton、StatusTag、ProgressBar、StatTile、AppModal、ToastHost、Icon
+    │   ├── ui/                    # AppButton、StatusTag、StatTile、AppModal、ToastHost、Icon
     │   ├── coach/                 # CoachBanner
     │   ├── plan/                  # WeekCalendar、SessionCard、ZoneBar、AdjustmentDiff
-    │   └── run/                   # TrackMap、VoiceCoachPanel
+    │   └── run/                   # TrackMap
     │
-    ├── views/
+├── pages/
     │   ├── auth/                  # 登录与身份入口
     │   │   └── LoginView.vue
     │   ├── profile/               # ProfileChatView（AI 建档）、ProfileConfirmView、MyProfileView
     │   ├── plan/                  # PlanOverviewView、SessionDetailView、PlanAdjustView
-    │   ├── run/                   # RunPrepView、RunExecuteView
+    │   ├── run/                   # RunExecuteView
     │   ├── summary/               # FeedbackView、SessionSummaryView
     │   └── history/               # HistoryView、TrendsView
     │
-    └── styles/tokens.css          # 全局样式入口：Tailwind 三件套 + CSS 变量 + 组件类
+├── assets/                        # 页面图片与品牌素材
+└── styles/tokens.css              # 全局样式入口：Tailwind 三件套 + CSS 变量 + 组件类
 ```
 
-**分层约定**：`views / components`（表现层）→ `stores`（状态与编排）→ `services`（可替换的外部能力）→ `domain`（纯函数领域逻辑）。
+**分层约定**：`pages / components`（表现层）→ `stores`（状态与编排）→ `services`（可替换的外部能力）→ `domain`（纯函数领域逻辑）。
 `domain` 不依赖 Vue 与浏览器 API，因此所有训练规则都可以直接用 `npm test` 回归。
 
 ## 4. 页面与路由
@@ -188,7 +188,7 @@ frontend/
 
 ## 7. 视觉规范
 
-- **Design Token 唯一来源**：`tailwind.config.js`（配色 / 字体 / 字号 / 圆角 / 间距 / 动效）+ `src/styles/tokens.css`（CSS 变量与组件类）。
+- **Design Token 唯一来源**：`tailwind.config.js`（配色 / 字体 / 字号 / 圆角 / 间距 / 动效）+ `styles/tokens.css`（CSS 变量与组件类）。
 - 配色对齐 PRD §3.3.2：品牌橙 `#FF7A00`（主按钮、进度、训练进行中）、活力橙 `#FF9F43`、品牌红 `#E53935`（风险/疼痛/停止）、深红 `#B71C1C`、浅橙背景 `#FFF3E8`、浅红背景 `#FFEBEE`、主文字 `#1F2937`、次文字 `#6B7280`、页面背景 `#F8F9FB`。
 - 状态**不只用颜色**表达：状态标签同时带图标与文字（PRD §3.3.4）。
 - 字体：Space Grotesk（数字与标题）+ Hanken Grotesk（正文），与原型稿一致。

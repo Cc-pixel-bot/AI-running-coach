@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { computeAdjustments, extractSignals } from '../src/domain/engine/adjustEngine.js'
-import { generatePlan } from '../src/domain/engine/planEngine.js'
-import { buildSummary } from '../src/domain/engine/summaryBuilder.js'
-import { DEMO_PROFILE } from '../src/data/demoSeed.js'
+import { computeAdjustments, extractSignals } from '../domain/engine/adjustEngine.js'
+import { generatePlan } from '../domain/engine/planEngine.js'
+import { buildSummary } from '../domain/engine/summaryBuilder.js'
+import { DEMO_PROFILE } from '../data/demoSeed.js'
 
 const profile = {
   ...DEMO_PROFILE,
