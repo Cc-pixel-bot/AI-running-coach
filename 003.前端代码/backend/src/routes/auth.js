@@ -3,6 +3,7 @@ import { pool } from '../db.js'
 import { config } from '../config.js'
 import { createToken, hashPassword, publicUser, verifyPassword, verifyToken } from '../security.js'
 import { validateCredentials, validateRegistration } from '../validation.js'
+import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -48,6 +49,16 @@ router.post('/login', async (req, res, next) => {
     }
     await pool.execute('UPDATE app_user SET last_login_at = CURRENT_TIMESTAMP(3) WHERE id = ?', [user.id])
     return res.json(authResponse(user))
+  } catch (error) {
+    return next(error)
+  }
+})
+
+router.delete('/account', requireAuth, async (req, res, next) => {
+  try {
+    const [result] = await pool.execute('DELETE FROM app_user WHERE id = ?', [req.auth.sub])
+    if (!result.affectedRows) return res.status(404).json({ message: '账号不存在或已注销' })
+    return res.json({ deleted: true })
   } catch (error) {
     return next(error)
   }

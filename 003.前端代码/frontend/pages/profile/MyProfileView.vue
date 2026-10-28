@@ -39,6 +39,28 @@ function resetAll() {
   ui.toast('已重置本地演示数据', 'success')
   router.replace('/login')
 }
+
+function requestDeleteAccount() {
+  ui.openModal({
+    icon: 'delete_forever',
+    title: '注销账号',
+    body: '注销后将删除该账号及其跑者档案、训练计划、训练记录和反馈数据，且无法恢复。确定继续吗？',
+    cancelText: '取消',
+    confirmText: '确认注销',
+    onConfirm: deleteAccount,
+  })
+}
+
+async function deleteAccount() {
+  try {
+    await auth.deleteAccount()
+    clearAll()
+    ui.toast('账号已注销，相关数据已删除', 'success')
+    router.replace('/login')
+  } catch (error) {
+    ui.toast(error.message || '注销失败，请稍后重试', 'error')
+  }
+}
 </script>
 
 <template>
@@ -168,6 +190,14 @@ function resetAll() {
       </section>
 
       <AppButton variant="secondary" icon="logout" @click="logout">退出登录</AppButton>
+
+      <button
+        class="w-full py-3 rounded-xl border border-error/30 text-error font-headline-sm text-[14px] hover:bg-error-container/40 active:scale-[0.99] transition-transform"
+        type="button"
+        @click="requestDeleteAccount"
+      >
+        注销账号
+      </button>
     </div>
   </main>
 </template>

@@ -18,6 +18,14 @@ import { COACH_QUOTES, STRENGTH_LIBRARY, INJURY_STRENGTH_KEY, WARMUP_LIBRARY, CO
 const DAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 export const PLAN_TEMPLATE_REVISION = 3
 
+function generatedExercise(item) {
+  return {
+    ...item,
+    duration: item.duration || item.dose,
+    instruction: item.instruction || item.points,
+  }
+}
+
 /** 默认周内排课：周二轻松 / 周四质量 / 周六长距离 / 周日力量 */
 const DEFAULT_SCHEDULE = {
   easy: { dayOffset: 2, label: '周二' },
@@ -56,18 +64,37 @@ export function computeGoalPace(profile) {
   return { pace, total: pace * distanceKm, derived: 'fallback' }
 }
 
-/** 模板选择：目标距离 + 距目标日期周数 + 当前水平 */
+/**
+ * 模板选择：目标距离 + 当前训练基础。
+ *
+ * 具体分层数字是“产品 Demo 规则”，不是官方标准：
+ * - 适应型：训练次数少、周跑量较低、最长跑较短或没有 10K 成绩；
+ * - 基础提升型：已有稳定训练，但尚未达到专项训练门槛；
+ * - 进阶提升型：训练稳定、有 10K 成绩，且周跑量和最长跑基础更充分。
+ */
 export function selectTemplate(profile, options = {}) {
   if (options.templateId && TEMPLATES[options.templateId]) return TEMPLATES[options.templateId]
-  const candidates = TEMPLATES_BY_GOAL[profile.targetType] || ['T10-8W']
-  if (candidates.length === 1) return TEMPLATES[candidates[0]]
+  const candidates = TEMPLATES_BY_GOAL[profile.targetType] || TEMPLATES_BY_GOAL.improve_10k
+  const weeklyKm = Number(profile.weeklyKm) || 0
+  const longestRunKm = Number(profile.longestRunKm) || 0
+  const runsPerWeek = Number(profile.runsPerWeek ?? profile.recentRunsPerWeek ?? profile.availableDays) || 3
+  const availableDays = Number(profile.availableDays) || 3
+  const hasBest10k = Boolean(profile.best10kPace)
 
-  // 有比赛且剩余时间不足 → 选赛前压缩模板
-  if (profile.hasRace && profile.targetDate) {
-    const weeksLeft = Math.ceil((new Date(profile.targetDate) - new Date()) / (7 * 864e5))
-    if (weeksLeft <= 6 && candidates.includes('T10-6W')) return TEMPLATES['T10-6W']
+  // 产品 Demo 规则：低基础/无成绩时先建立连续性；可训练天数不足时使用低频版本。
+  if (runsPerWeek <= 2 || weeklyKm < 15 || longestRunKm < 6 || !hasBest10k) {
+    const id = runsPerWeek <= 2 || availableDays <= 2 ? 'T10-ADAPT-2' : weeklyKm >= 18 && availableDays >= 4 ? 'T10-ADAPT-4' : 'T10-ADAPT-3'
+    return TEMPLATES[id]
   }
-  return TEMPLATES[candidates[0]]
+
+  // 产品 Demo 规则：稳定训练 + 有成绩 + 较充足跑量，才进入进阶模板。
+  if (availableDays >= 4 && runsPerWeek >= 4 && weeklyKm >= 30 && longestRunKm >= 10 && hasBest10k) return TEMPLATES['T10-ADV-4']
+  if (runsPerWeek >= 3 && weeklyKm >= 26 && longestRunKm >= 9 && hasBest10k) return TEMPLATES['T10-ADV-3-PLUS']
+  if (runsPerWeek >= 3 && weeklyKm >= 22 && longestRunKm >= 8 && hasBest10k) return TEMPLATES['T10-ADV-3']
+
+  if (availableDays >= 4 && runsPerWeek >= 4 && candidates.includes('T10-BASE-4')) return TEMPLATES['T10-BASE-4']
+  if (runsPerWeek >= 3 && weeklyKm >= 20 && candidates.includes('T10-BASE-3-PLUS')) return TEMPLATES['T10-BASE-3-PLUS']
+  return TEMPLATES['T10-BASE-3']
 }
 
 /**
@@ -141,34 +168,40 @@ export function computeWeeklyVolumes(template, startKm) {
   return weeks
 }
 
-/** 按可训练天数裁剪课次（PRD §B2 步骤 5 / §5.1 R7：默认 3 跑 + 1 力量） */
-function buildWeekSchedule(availableDays) {
+/**
+ * 按模板频次生成周内课次。
+ *
+ * runsPerWeek 表示跑步课次数；sessionsPerWeek 表示页面展示的总课次。
+ * 部分模板会在跑步课之外增加 1 次力量辅助课，因此总课次可能比跑步次数多 1。
+ */
+function buildWeekSchedule(template, availableDays) {
   const schedule = []
-  if (availableDays <= 2) {
-    // 2 跑 + 1 力量：保留质量课与长距离，取消第三跑
+  const requestedRuns = Number(template?.runsPerWeek) || Number(availableDays) || 3
+  const runCount = Math.min(Math.max(requestedRuns, 2), 4)
+
+  if (runCount === 2) {
+    // 2 跑：保留质量课与长距离，不额外增加辅助课。
     schedule.push({ kind: 'quality', ...DEFAULT_SCHEDULE.quality })
     schedule.push({ kind: 'long', ...DEFAULT_SCHEDULE.long })
-    schedule.push({ kind: 'strength', ...DEFAULT_SCHEDULE.strength })
-  } else if (availableDays === 3) {
-    // 3 跑 + 1 力量（经典平衡）
+  } else if (runCount === 3) {
+    // 3 跑：轻松跑 + 质量课 + 长距离。
     schedule.push({ kind: 'easy', ...DEFAULT_SCHEDULE.easy })
     schedule.push({ kind: 'quality', ...DEFAULT_SCHEDULE.quality })
     schedule.push({ kind: 'long', ...DEFAULT_SCHEDULE.long })
-    schedule.push({ kind: 'strength', ...DEFAULT_SCHEDULE.strength })
-  } else if (availableDays === 4) {
-    schedule.push({ kind: 'easy', ...DEFAULT_SCHEDULE.easy })
-    schedule.push({ kind: 'quality', ...DEFAULT_SCHEDULE.quality })
-    schedule.push({ kind: 'long', ...DEFAULT_SCHEDULE.long })
-    schedule.push({ kind: 'strength', ...DEFAULT_SCHEDULE.strength })
-    schedule.push({ kind: 'recovery', dayOffset: 5, label: '周五' })
   } else {
+    // 4 跑：轻松跑 + 质量课 + 长距离 + 恢复跑。
     schedule.push({ kind: 'easy', ...DEFAULT_SCHEDULE.easy })
     schedule.push({ kind: 'quality', ...DEFAULT_SCHEDULE.quality })
     schedule.push({ kind: 'long', ...DEFAULT_SCHEDULE.long })
-    schedule.push({ kind: 'strength', ...DEFAULT_SCHEDULE.strength })
     schedule.push({ kind: 'recovery', dayOffset: 5, label: '周五' })
-    schedule.push({ kind: 'easy', dayOffset: 1, label: '周一' })
   }
+
+  // sessionsPerWeek 多于跑步次数时，增加力量辅助课；它不计入 runsPerWeek。
+  const totalSessions = Number(template?.sessionsPerWeek) || schedule.length
+  if (totalSessions > schedule.length) {
+    schedule.push({ kind: 'strength', ...DEFAULT_SCHEDULE.strength })
+  }
+
   return schedule
 }
 
@@ -302,8 +335,31 @@ function buildSession({ kind, week, dayOffset, label, weekPlan, profile, goalPac
     },
     description,
     structure,
-    warmup: WARMUP_LIBRARY.filter((w) => w.applies.includes('all') || w.applies.includes(level)).map((w) => ({ ...w })),
-    cooldown: COOLDOWN_LIBRARY.map((c) => ({ ...c })),
+    preRunWarmup: {
+      title: '练前动态激活',
+      duration: 5,
+      exercises: WARMUP_LIBRARY
+        .filter((w) => w.applies.includes('all') || w.applies.includes(level))
+        .filter((w) => !['小腿', '足部', '膝盖'].some((part) => (profile.injuries || []).some((i) => i.active && i.part === part)) || !['wu_highknee', 'wu_strides'].includes(w.id))
+        .map(generatedExercise),
+    },
+    mainRun: {
+      type: kind === 'quality' ? level : kind === 'long' ? 'long' : kind === 'recovery' ? 'recovery' : 'easy',
+      distanceKm,
+      durationMin,
+      pace: `${formatPace(pace.low)}-${formatPace(pace.high)}/公里`,
+      structure: structure?.pattern || description,
+    },
+    postRunStretch: {
+      title: '练后静态拉伸',
+      duration: 5,
+      exercises: COOLDOWN_LIBRARY.map(generatedExercise),
+    },
+    warmup: WARMUP_LIBRARY
+      .filter((w) => w.applies.includes('all') || w.applies.includes(level))
+      .filter((w) => !['小腿', '足部', '膝盖'].some((part) => (profile.injuries || []).some((i) => i.active && i.part === part)) || !['wu_highknee', 'wu_strides'].includes(w.id))
+      .map(generatedExercise),
+    cooldown: COOLDOWN_LIBRARY.map(generatedExercise),
     adaptationNote: '',
     coachQuote: COACH_QUOTES[level] || COACH_QUOTES.easy,
   }
@@ -344,7 +400,7 @@ export function generatePlan(profile, options = {}) {
   )
 
   // —— 步骤 5：分配周内课次 ——
-  const schedule = buildWeekSchedule(profile.availableDays || 3)
+  const schedule = buildWeekSchedule(template, profile.availableDays || 3)
   const longCap = round((profile.longestRunKm || 8) * 1.1, 1) // R2 单次长距离上限
 
   const weeks = weekVolumes.map((weekPlan) => {
@@ -384,7 +440,7 @@ export function generatePlan(profile, options = {}) {
     // 中风险筛查：前 2 周只出轻松跑 + 长距离，质量课从第 3 周起解锁
     if (screening.riskLevel === 'moderate' && weekPlan.week <= 2) {
       sessions.forEach((s) => {
-        if (s.type === 'tempo' || s.type === 'interval' || s.type === 'race') {
+        if (s.type === 'aerobic' || s.type === 'tempo' || s.type === 'interval' || s.type === 'race') {
           s.level = 'easy'
           s.type = 'easy'
           s.title = '轻松跑 · 有氧基础'

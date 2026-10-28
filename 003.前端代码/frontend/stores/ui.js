@@ -15,6 +15,9 @@ export const useUiStore = defineStore('ui', {
     dismiss(id) {
       this.toasts = this.toasts.filter((t) => t.id !== id)
     },
+    clearToasts() {
+      this.toasts = []
+    },
     openModal(payload) {
       this.modal = { id: Date.now(), ...payload }
     },

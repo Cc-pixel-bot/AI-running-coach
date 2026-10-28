@@ -1,3 +1,9 @@
+import {
+  TEMPLATES as DEMO_TEMPLATES,
+  TEMPLATES_BY_GOAL as DEMO_TEMPLATES_BY_GOAL,
+  TARGET_TYPES as DEMO_TARGET_TYPES,
+} from './trainingTemplates10k.js'
+
 /**
  * 训练模板库 —— PRD v1.2 §B1。
  *
@@ -73,7 +79,7 @@ function buildBlueprint(phases) {
   return blueprint
 }
 
-export const TEMPLATES = {
+const LEGACY_TEMPLATES = {
   'T5-WA': {
     id: 'T5-WA',
     name: '5km 提升 · 8 周计划',
@@ -351,11 +357,16 @@ export const TEMPLATES = {
 }
 
 /** 当前 Demo 仅开放 10km 提升目标 */
-export const TEMPLATES_BY_GOAL = {
+const LEGACY_TEMPLATES_BY_GOAL = {
   improve_10k: ['T10-8W', 'T10-6W'],
 }
 
 /** 目标类型定义 */
-export const TARGET_TYPES = {
+const LEGACY_TARGET_TYPES = {
   improve_10k: { key: 'improve_10k', label: '提升 10km', distance: '10K', weeks: 8, icon: 'sprint' },
 }
+
+// 兼容旧导入路径：当前 Demo 的唯一模板库由 trainingTemplates10k.js 提供。
+export const TEMPLATES = DEMO_TEMPLATES
+export const TEMPLATES_BY_GOAL = DEMO_TEMPLATES_BY_GOAL
+export const TARGET_TYPES = DEMO_TARGET_TYPES

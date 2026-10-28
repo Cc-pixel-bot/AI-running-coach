@@ -1,10 +1,8 @@
 import { defineStore } from 'pinia'
-import { generatePlan } from '../domain/engine/planEngine.js'
 import { computeAdjustments } from '../domain/engine/adjustEngine.js'
 import { load, save } from '../services/storage.js'
 import { DEMO_ADJUSTMENT_LOGS } from '../data/demoSeed.js'
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+import { confirmPlanApi, generateAiPlanApi } from '../services/authApi.js'
 
 function normalizePlanCopy(plan) {
   if (!plan) return plan
@@ -17,9 +15,145 @@ function normalizePlanCopy(plan) {
       if (session.description === '全程能正常说话的强度。目标是积累有氧基础，不是训练。') {
         session.description = '全程保持呼吸从容、动作放松。目标是积累有氧基础，不追求速度。'
       }
+      if (session.mainRun) {
+        session.mainRun = {
+          ...session.mainRun,
+          type: session.type,
+          distanceKm: Number(session.distanceKm || 0),
+          durationMin: Number(session.durationMin || 0),
+        }
+      }
+      if (session.preRunWarmup?.exercises) session.warmup = session.preRunWarmup.exercises
+      if (session.postRunStretch?.exercises) session.cooldown = session.postRunStretch.exercises
     })
   })
   return plan
+}
+
+function normalizeExerciseList(value, kind) {
+  const defaults = kind === 'warmup'
+    ? [
+        { name: '快走热身', dose: '3分钟', points: '从轻松步行逐渐进入跑步状态' },
+        { name: '腿部动态活动', dose: '各侧10次', points: '动作轻柔，不做弹震和疼痛范围外的动作' },
+      ]
+    : [
+        { name: '慢走放松', dose: '3分钟', points: '让呼吸和心率逐步恢复' },
+        { name: '小腿与大腿静态拉伸', dose: '每侧15–20秒×2', points: '保持自然呼吸，不压到疼痛' },
+      ]
+  const list = Array.isArray(value) ? value : value ? [value] : []
+  const normalized = list
+    .map((item, index) => {
+      if (typeof item === 'string') {
+        return { id: `${kind}-${index + 1}`, name: item, dose: kind === 'warmup' ? '3分钟' : '每侧15–20秒×2', points: '' }
+      }
+      return {
+        id: item?.id || `${kind}-${index + 1}`,
+        name: item?.name || item?.title || `${kind === 'warmup' ? '动态热身' : '静态拉伸'}${index + 1}`,
+        duration: item?.duration || item?.dose || (kind === 'warmup' ? '3分钟' : '每侧15–20秒×2'),
+        instruction: item?.instruction || item?.points || item?.detail || '',
+        dose: item?.dose || item?.duration || (kind === 'warmup' ? '3分钟' : '每侧15–20秒×2'),
+        points: item?.points || item?.detail || item?.instruction || '',
+      }
+    })
+    .filter((item) => item.name)
+  return normalized.length ? normalized : defaults.map((item, index) => ({ ...item, id: `${kind}-${index + 1}` }))
+}
+
+function normalizeExerciseSection(value, kind, fallbackTitle, fallbackDuration) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const exercises = normalizeExerciseList(source.exercises ?? value, kind)
+  return {
+    title: source.title || fallbackTitle,
+    duration: Number(source.duration || fallbackDuration),
+    exercises,
+  }
+}
+
+function normalizeAdaptationSummary(summary) {
+  if (Array.isArray(summary) && summary.length) return summary
+  if (typeof summary === 'string' && summary.trim()) {
+    return [{ icon: 'psychology', title: '个性化安排', text: summary.trim() }]
+  }
+  return [{ icon: 'psychology', title: '个性化安排', text: '根据跑者档案、目标成绩和训练模板生成本计划。' }]
+}
+
+function normalizeAiPlan(plan, profile) {
+  const easyPace = Number(profile.easyPace || 420)
+  const goalPace = Number(profile.targetPace || easyPace)
+
+  return normalizePlanCopy({
+    ...plan,
+    goalPace,
+    goalTotalSec: Number(plan.goalTotalSec || profile.targetTotalSec || 0),
+    totalWeeks: Number(plan.totalWeeks || 8),
+    currentWeek: Number(plan.currentWeek || 1),
+    status: plan.status || 'draft',
+    adaptationSummary: normalizeAdaptationSummary(plan.adaptationSummary),
+    weeks: (plan.weeks || []).map((week, weekIndex) => ({
+      ...week,
+      week: Number(week.week || weekIndex + 1),
+      targetKm: Number(week.targetKm ?? week.totalKm ?? 0),
+      typeName: week.phase || week.phaseName || '训练阶段',
+      focus: week.focus || '完成本周训练安排',
+      sessions: (week.sessions || []).map((session, sessionIndex) => {
+        const isEasyEffort = ['easy', 'aerobic', 'recovery', 'long'].includes(session.type)
+        const paceLow = isEasyEffort
+          ? easyPace
+          : goalPace
+        const paceHigh = isEasyEffort
+          ? easyPace + 20
+          : goalPace + 10
+        return {
+          ...session,
+          id: session.id || `w${week.week}s${sessionIndex + 1}`,
+          week: Number(session.week || week.week),
+          dayOffset: Number(session.dayOffset ?? sessionIndex * 2),
+          dayLabel: session.dayLabel || `第${sessionIndex + 1}天`,
+          status: session.status === 'done' || session.status === 'replaced' ? session.status : 'pending',
+          distanceKm: Number(session.distanceKm || 0),
+          durationMin: Number(session.durationMin || 0),
+          intensity: typeof session.intensity === 'object'
+            ? session.intensity
+            : {
+                level: session.intensity || '轻松',
+                paceLow,
+                paceHigh,
+                hrZone: '—',
+                effort: session.intensity || '轻松',
+                rpe: session.type === 'interval' ? [6, 8] : session.type === 'tempo' || session.type === 'race' ? [5, 7] : [2, 4],
+              },
+          structure: typeof session.structure === 'object'
+            ? {
+                ...session.structure,
+                pattern: session.structure.pattern || '热身 → 主体跑步 → 放松',
+                warmupKm: Number(session.structure.warmupKm || 0),
+                mainKm: Number(session.structure.mainKm ?? session.distanceKm ?? 0),
+                cooldownKm: Number(session.structure.cooldownKm || 0),
+                mainLevel: session.structure.mainLevel || session.type,
+              }
+            : {
+                pattern: session.structure || '热身 → 主体跑步 → 放松',
+                warmupKm: 0,
+                mainKm: Number(session.distanceKm || 0),
+                cooldownKm: 0,
+                mainLevel: session.type,
+              },
+          preRunWarmup: normalizeExerciseSection(session.preRunWarmup ?? session.warmup, 'warmup', '练前动态激活', 5),
+          mainRun: session.mainRun || {
+            type: session.type,
+            distanceKm: Number(session.distanceKm || 0),
+            durationMin: Number(session.durationMin || 0),
+            pace: null,
+            structure: session.structure?.pattern || session.structure || '主体跑步训练',
+          },
+          postRunStretch: normalizeExerciseSection(session.postRunStretch ?? session.cooldown, 'cooldown', '练后静态拉伸', 5),
+          warmup: normalizeExerciseSection(session.preRunWarmup ?? session.warmup, 'warmup', '练前动态激活', 5).exercises,
+          cooldown: normalizeExerciseSection(session.postRunStretch ?? session.cooldown, 'cooldown', '练后静态拉伸', 5).exercises,
+          exercises: Array.isArray(session.exercises) ? session.exercises : [],
+        }
+      }),
+    })),
+  })
 }
 
 /** 训练计划（生成 → 确认 → 执行中 → 调整） */
@@ -30,7 +164,7 @@ export const usePlanStore = defineStore('plan', {
     /** 待确认的调整集合 */
     pendingAdjustments: [],
     pendingSafetyNotice: null,
-    /** 规则引擎产出的新计划（用户采纳后写回） */
+    /** AI 调整产出的新计划（用户采纳后写回） */
     pendingPlan: null,
     /** 调整留痕 */
     adjustmentLogs: load('adjustmentLogs', DEMO_ADJUSTMENT_LOGS),
@@ -63,25 +197,42 @@ export const usePlanStore = defineStore('plan', {
   actions: {
     async generate(profile, options = {}) {
       this.generating = true
-      await sleep(900) // 模拟计划生成耗时（PRD §8：计划生成 < 20s）
-      const result = generatePlan(profile, options)
-      this.generating = false
-
-      if (result.blocked) {
+      const token = load('authToken', null)
+      if (!token) {
+        this.generating = false
+        throw new Error('登录已失效，请重新登录')
+      }
+      try {
+        const result = await generateAiPlanApi(token, { ...profile, ...options })
+        if (result.status === 'goal_adjustment_recommended') {
+          this.generating = false
+          return { goalRecommendation: result.goalRecommendation }
+        }
+        if (result.status === 'blocked' || result.blocked) {
+          this.plan = null
+          save('plan', null)
+          this.generating = false
+          return { blocked: true, reason: 'SCREENING_BLOCK', message: result.message }
+        }
+        const normalized = normalizeAiPlan(result.plan, profile)
+        this.plan = normalized
+        this.confirmed = false
+        save('plan', normalized)
+        save('planConfirmed', false)
+        this.generating = false
+        return normalized
+      } catch (error) {
+        this.generating = false
         this.plan = null
         save('plan', null)
-        return result
+        throw error
       }
-
-      this.plan = normalizePlanCopy(result)
-      this.confirmed = false
-      save('plan', result)
-      save('planConfirmed', false)
-      return result
     },
 
-    confirmPlan() {
+    async confirmPlan() {
       if (!this.plan) return
+      const token = load('authToken', null)
+      if (token) await confirmPlanApi(token)
       this.plan.status = 'active'
       this.confirmed = true
       save('plan', this.plan)

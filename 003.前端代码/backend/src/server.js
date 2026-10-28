@@ -3,6 +3,9 @@ import cors from 'cors'
 import { config } from './config.js'
 import { checkDatabase } from './db.js'
 import authRoutes from './routes/auth.js'
+import profileRoutes from './routes/profile.js'
+import planRoutes from './routes/plans.js'
+import aiPlanRoutes from './routes/aiPlans.js'
 
 const app = express()
 
@@ -31,6 +34,9 @@ app.get('/api/health', async (_req, res) => {
 })
 
 app.use('/api/auth', authRoutes)
+app.use('/api/profile', profileRoutes)
+app.use('/api/plans', planRoutes)
+app.use('/api/ai/plans', aiPlanRoutes)
 
 app.use((error, _req, res, _next) => {
   console.error('[api]', error)

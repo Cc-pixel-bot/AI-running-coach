@@ -13,27 +13,23 @@ const TONE = {
   prep: 'bg-surface-container text-on-surface-variant',
   specific: 'bg-surface-container text-on-surface-variant',
   peak: 'bg-surface-container text-on-surface-variant',
-  taper: 'bg-secondary-fixed text-on-secondary-fixed-variant',
 }
 
 const cellClass = (w) => {
   if (w.week === props.currentWeek) return 'bg-primary-container text-on-primary font-bold shadow-sm'
   if (w.stepBack) return 'bg-primary-fixed text-primary font-bold'
-  if (w.taper) return TONE.taper
   return TONE.base
 }
 
 const phases = computed(() => {
   const list = props.weeks || []
-  const base = list.filter((w) => !w.stepBack && !w.taper)
+  const base = list.filter((w) => !w.stepBack)
   const step = list.filter((w) => w.stepBack)
-  const taper = list.filter((w) => w.taper)
   const range = (arr) => (arr.length ? `第${arr[0].week}-${arr[arr.length - 1].week}周` : '—')
   return [
     { label: '适应/基础', sub: range(base.slice(0, 2)), bg: 'bg-surface-container-low', fg: 'text-primary' },
     { label: '回撤周', sub: step.length ? '第3周' : '—', bg: 'bg-primary-fixed/60', fg: 'text-primary' },
     { label: '专项提升', sub: range(base.slice(2)), bg: 'bg-surface-container-low', fg: 'text-on-surface' },
-    { label: '赛前减量', sub: taper.length ? range(taper) : '—', bg: 'bg-surface-container-low', fg: 'text-secondary' },
   ]
 })
 </script>
@@ -55,15 +51,13 @@ const phases = computed(() => {
               ? 'bg-primary-container'
               : w.stepBack
                 ? 'bg-primary'
-                : w.taper
-                  ? 'bg-secondary'
-                  : 'bg-transparent'
+                : 'bg-transparent'
           "
         />
       </div>
     </div>
 
-    <div class="grid grid-cols-4 gap-1.5 pt-2">
+    <div class="grid grid-cols-3 gap-1.5 pt-2">
       <div v-for="phase in phases" :key="phase.label" class="rounded-lg p-2 text-center" :class="phase.bg">
         <span class="block font-label-caps text-label-caps font-bold" :class="phase.fg">{{ phase.label }}</span>
         <span class="plan-summary-text block font-body-sm text-body-sm text-on-surface-variant scale-90">{{ phase.sub }}</span>

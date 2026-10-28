@@ -28,6 +28,21 @@ export function remove(key) {
   }
 }
 
+/** 清除当前账号的业务数据，保留登录与演示设置。 */
+export function clearUserData() {
+  const userKeys = [
+    'profileDraft',
+    'profileConfirmed',
+    'profileConfirmedAt',
+    'plan',
+    'planConfirmed',
+    'adjustmentLogs',
+    'records',
+    'lastRecord',
+  ]
+  userKeys.forEach((key) => remove(key))
+}
+
 export function clearAll() {
   Object.keys(localStorage)
     .filter((k) => k.startsWith(PREFIX))

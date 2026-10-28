@@ -101,6 +101,68 @@ export const DEMO_PROFILES = [
   },
 ]
 
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+function randomItem(items) {
+  return items[randomInt(0, items.length - 1)]
+}
+
+function randomTerrain() {
+  const options = ['公路', '田径跑道', '健身房']
+  const selected = options.filter(() => Math.random() > 0.45)
+  return selected.length ? selected : [randomItem(options)]
+}
+
+/**
+ * 随机演示档案：只生成一组合理的跑者输入，不包含任何预设训练计划。
+ * 点击“载入演示档案”后，仍由后端 AI 根据这组档案生成计划。
+ */
+export function createRandomDemoProfile() {
+  const gender = randomItem(['male', 'female'])
+  const heightCm = gender === 'male' ? randomInt(165, 188) : randomInt(155, 175)
+  const weightKg = randomInt(
+    Math.max(48, Math.round((heightCm / 100) ** 2 * 18.5)),
+    Math.min(100, Math.round((heightCm / 100) ** 2 * 25)),
+  )
+  const targetMinutes = randomItem([50, 55, 60, 65, 70])
+  const bestMinutes = randomItem([null, 58, 62, 65, 68, 72])
+  const weeklyKm = randomItem([10, 15, 20, 25, 30])
+  const longestRunKm = randomItem([4, 5, 6, 8, 10])
+  const easyPace = randomItem([360, 390, 420, 450, 480])
+
+  return {
+    gender,
+    birthYear: randomInt(1985, 2002),
+    heightCm,
+    weightKg,
+    runningYears: randomItem(['<3个月', '3-12个月', '1-3年']),
+    runsPerWeek: randomInt(2, 4),
+    weeklyKm,
+    longestRunKm,
+    raceHistory: bestMinutes ? ['10K'] : [],
+    best5kPace: null,
+    best10kPace: bestMinutes ? bestMinutes * 6 : null,
+    best10kTimeMin: bestMinutes,
+    bestHmPace: null,
+    bestMarPace: null,
+    easyPace,
+    targetType: 'improve_10k',
+    targetDistance: '10K',
+    targetTime: targetMinutes * 60,
+    targetTimeInput: `${targetMinutes}:00`,
+    targetPace: targetMinutes * 6,
+    injuries: [],
+    availableDays: randomInt(2, 4),
+    availableMin: randomItem([45, 60, 75]),
+    terrain: randomTerrain(),
+    equipment: [],
+    screening: { q1: 'no', q2: ['none'], q3: 'no' },
+    aiInferred: [],
+  }
+}
+
 /** 预置 3 周历史训练记录（历史与趋势页） */
 export const DEMO_HISTORY = [
   {

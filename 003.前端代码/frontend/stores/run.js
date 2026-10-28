@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { markRaw } from 'vue'
+import { GpsService } from '../services/gpsService.js'
 import { GpsSimulator } from '../services/gpsSimulator.js'
 import { buildCuePack } from '../services/voiceCoach.js'
 import { buildSummary, fallbackSummary } from '../domain/engine/summaryBuilder.js'
@@ -13,6 +14,7 @@ export const useRunStore = defineStore('run', {
   state: () => ({
     session: null,
     simulator: null,
+    gpsError: '',
     cues: [],
     cueLog: [],
     elapsedSec: 0,
@@ -59,7 +61,18 @@ export const useRunStore = defineStore('run', {
     startSession(session, { speedFactor = 1 } = {}) {
       this.session = session
       this.speedFactor = speedFactor
-      this.simulator = markRaw(new GpsSimulator(session, { speedFactor }))
+      this.gpsError = ''
+      const isTestRun = import.meta.env?.MODE === 'test'
+      const gps = isTestRun
+        ? new GpsSimulator(session, { speedFactor })
+        : new GpsService(session, {
+        onError: (message) => {
+          this.gpsError = message
+          this.status = 'error'
+          this._stopTimer()
+        },
+        })
+      this.simulator = markRaw(gps)
       this.cues = buildCuePack(session, { goalPaceSec: session?.intensity ? session.intensity.paceLow : 0 })
       this.cueLog = []
       this.record = null
@@ -94,7 +107,7 @@ export const useRunStore = defineStore('run', {
     _tick() {
       const sim = this.simulator
       if (!sim) return
-      const events = sim.tick(this.speedFactor)
+      const events = sim.tick()
       this.elapsedSec = sim.elapsedSec
       this.distanceKm = sim.distanceKm
       this.currentPace = sim.currentPace
@@ -259,6 +272,7 @@ export const useRunStore = defineStore('run', {
       this.summary = null
       this.lastAdjustments = []
       this.safetyNotice = null
+      this.gpsError = ''
       this.prepChecklist = {}
     },
   },

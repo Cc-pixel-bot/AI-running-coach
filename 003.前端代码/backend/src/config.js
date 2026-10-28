@@ -14,4 +14,12 @@ export const config = {
   },
   authSecret: process.env.AUTH_SECRET || 'local-demo-secret-change-me',
   frontendOrigin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  ai: {
+    provider: process.env.AI_PROVIDER || 'mock',
+    baseUrl: process.env.AI_BASE_URL || '',
+    apiKey: process.env.AI_API_KEY || '',
+    model: process.env.AI_MODEL || '',
+    timeoutMs: Number(process.env.AI_TIMEOUT_MS || 300000),
+    reasoningEffort: process.env.AI_REASONING_EFFORT || 'none',
+  },
 }

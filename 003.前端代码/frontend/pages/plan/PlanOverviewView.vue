@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlanStore } from '../../stores/plan.js'
 import { useProfileStore } from '../../stores/profile.js'
@@ -8,8 +8,6 @@ import WeekCalendar from '../../components/plan/WeekCalendar.vue'
 import ZoneBar from '../../components/plan/ZoneBar.vue'
 import SessionCard from '../../components/plan/SessionCard.vue'
 import AppButton from '../../components/ui/AppButton.vue'
-import { PLAN_TEMPLATE_REVISION } from '../../domain/engine/planEngine.js'
-import { save } from '../../services/storage.js'
 import planTrackHero from '../../assets/plan-track-hero.png'
 import { formatClock } from '../../domain/utils/pace.js'
 
@@ -35,35 +33,18 @@ const currentWeekDoneCount = computed(
   () => week.value?.sessions?.filter((session) => session.status === 'done').length || 0,
 )
 const currentWeekSessionCount = computed(() => week.value?.sessions?.length || 0)
+const currentWeekRunCount = computed(
+  () => week.value?.sessions?.filter((session) => session.type !== 'strength').length || 0,
+)
+const currentWeekAuxCount = computed(
+  () => week.value?.sessions?.filter((session) => session.type === 'strength').length || 0,
+)
 const currentBestTotal = computed(() => {
   const pace = Number(profile.draft.best10kPace)
   const distance = plan.value?.targetDistance === '5K' ? 5 : plan.value?.targetDistance === 'HM' ? 21.0975 : plan.value?.targetDistance === 'MARATHON' ? 42.195 : 10
   return pace > 0 ? Math.round(pace * distance) : null
 })
 const targetTotal = computed(() => plan.value?.goalTotalSec || null)
-
-// 旧版计划已缓存时，自动用当前模板重建，避免用户继续看到旧的重复课程。
-onMounted(async () => {
-  if (
-    planStore.plan?.templateId !== 'T10-8W' ||
-    planStore.plan?.templateRevision === PLAN_TEMPLATE_REVISION ||
-    !Object.keys(profile.draft || {}).length
-  ) return
-
-  const previousPlan = planStore.plan
-  const previousWeek = previousPlan.currentWeek || 1
-  const previousStatus = previousPlan.status
-  const previousConfirmed = planStore.confirmed
-  const refreshed = await planStore.generate(profile.toEngineProfile(), { templateId: 'T10-8W' })
-
-  if (!refreshed.blocked) {
-    planStore.plan.currentWeek = Math.min(previousWeek, planStore.plan.totalWeeks)
-    planStore.plan.status = previousStatus
-    planStore.confirmed = previousConfirmed
-    save('plan', planStore.plan)
-    save('planConfirmed', previousConfirmed)
-  }
-})
 
 function selectWeek(w) {
   selectedWeek.value = w
@@ -111,7 +92,11 @@ function openSession(session) {
             </p>
             <div class="mt-4 flex items-center gap-2 text-white/75 text-body-sm">
               <Icon name="event" :size="17" />
-              <span>{{ plan.totalWeeks }}周 · 每周{{ currentWeekSessionCount }}课 · 第{{ plan.currentWeek }}周进行中</span>
+              <span>
+                {{ plan.totalWeeks }}周 · 每周{{ currentWeekRunCount }}次跑步
+                <template v-if="currentWeekAuxCount">· {{ currentWeekAuxCount }}次辅助训练</template>
+                · 第{{ plan.currentWeek }}周进行中
+              </span>
             </div>
 
             <div class="mt-5 rounded-xl bg-black/15 border border-white/10 p-4">

@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '../../stores/profile.js'
 import { useUiStore } from '../../stores/ui.js'
+import { useAuthStore } from '../../stores/auth.js'
 import Icon from '../../components/ui/Icon.vue'
 import coachAvatar from '../../assets/coach-avatar.png'
 import AppButton from '../../components/ui/AppButton.vue'
@@ -12,9 +13,22 @@ import { formatPace, formatClock } from '../../domain/utils/pace.js'
 const router = useRouter()
 const profile = useProfileStore()
 const ui = useUiStore()
+const auth = useAuthStore()
 
 const d = computed(() => profile.draft)
 const screening = computed(() => profile.screeningResult)
+
+onMounted(async () => {
+  try {
+    const loaded = await profile.loadFromServer(auth.token)
+    if (!loaded) {
+      ui.toast('暂未找到跑者档案，请先完成建档', 'warn')
+      router.replace('/profile')
+    }
+  } catch (error) {
+    ui.toast(error.message || '档案加载失败，请稍后重试', 'error')
+  }
+})
 
 const cards = computed(() => [
   {
@@ -38,17 +52,14 @@ const cards = computed(() => [
     editTo: '/profile',
     rows: [
       {
-        icon: 'track_changes',
         label: '目标周期项目',
         value: `${profile.targetTypeMeta?.label ?? '—'} · ${profile.targetTypeMeta?.weeks ?? '—'}周`,
       },
       {
-        icon: 'timer',
         label: '目标完赛用时',
         value: profile.targetTotalSec ? formatClock(profile.targetTotalSec) : '—',
       },
       {
-        icon: 'speed',
         label: '目标巡航配速',
         value: profile.targetPace ? `${formatPace(profile.targetPace)}/公里` : '—',
       },
@@ -60,10 +71,10 @@ const cards = computed(() => [
     title: '跑步与跑量基础',
     editTo: '/profile',
     rows: [
-      { icon: 'timeline', label: '近3个月周跑量', value: `${d.value.weeklyKm ?? '—'}公里` },
-      { icon: 'bolt', label: '舒适慢跑配速', value: d.value.easyPace ? `${formatPace(d.value.easyPace)}/公里` : '系统推测' },
-      { icon: 'trophy', label: '最好成绩', value: d.value.best10kPace ? `10公里 / ${formatClock(d.value.best10kPace * 10)}` : '暂无记录' },
-      { icon: 'route', label: '最长单次', value: `${d.value.longestRunKm ?? '—'} 公里` },
+      { label: '近3个月周跑量', value: `${d.value.weeklyKm ?? '—'}公里` },
+      { label: '舒适慢跑配速', value: d.value.easyPace ? `${formatPace(d.value.easyPace)}/公里` : '系统推测' },
+      { label: '最好成绩', value: d.value.best10kPace ? `10公里 / ${formatClock(d.value.best10kPace * 10)}` : '暂无记录' },
+      { label: '最长单次', value: `${d.value.longestRunKm ?? '—'} 公里` },
     ],
   },
   {
@@ -73,15 +84,13 @@ const cards = computed(() => [
     editTo: '/profile',
     rows: [
       {
-        icon: 'warning',
         label: '伤病记录',
         value: (d.value.injuries || []).length ? (d.value.injuries || []).map((i) => i.part).join('、') : '无任何不适',
         danger: (d.value.injuries || []).length > 0,
       },
       {
-        icon: 'shield',
         label: '风险筛查',
-        value: { low: '低风险 · 正常生成', moderate: '中风险 · 前 2 周保守', medical_confirm: '需医疗确认' }[screening.value.riskLevel],
+        value: { low: '筛查通过 · 正常生成', moderate: '训练基础待建立 · 前2周保守', medical_confirm: '需医疗确认' }[screening.value.riskLevel],
         danger: screening.value.riskLevel === 'medical_confirm',
         warn: screening.value.riskLevel === 'moderate',
       },
@@ -114,7 +123,12 @@ async function handleGeneratePlan() {
     })
     return
   }
-  router.push('/profile/plan-confirm')
+  try {
+    await profile.confirmOnServer(auth.token)
+    router.push('/profile/plan-confirm')
+  } catch (error) {
+    ui.toast(error.message || '档案确认失败，请稍后重试', 'error')
+  }
 }
 </script>
 
@@ -177,7 +191,7 @@ async function handleGeneratePlan() {
           :class="screening.riskLevel === 'medical_confirm' ? 'text-error' : 'text-primary'"
         />
         <div class="text-xs leading-snug">
-          <p class="font-bold text-on-surface">运动前筛查：{{ screening.riskLevel === 'low' ? '低风险' : screening.riskLevel === 'moderate' ? '中风险' : '需医疗确认' }}</p>
+          <p class="font-bold text-on-surface">运动前筛查：{{ screening.riskLevel === 'low' ? '筛查通过' : screening.riskLevel === 'moderate' ? '训练基础待建立' : '需医疗确认' }}</p>
           <p class="text-on-surface-variant mt-0.5">{{ screening.summary }}</p>
         </div>
       </div>
@@ -229,7 +243,7 @@ async function handleGeneratePlan() {
             class="flex items-center justify-between bg-surface-container-low/60 rounded-xl px-3 py-1.5"
           >
             <div class="flex items-center gap-1.5">
-              <Icon :name="row.icon" :size="15" :class="row.danger ? 'text-error' : row.warn ? 'text-primary' : 'text-outline'" />
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="row.danger ? 'bg-error' : row.warn ? 'bg-primary' : 'bg-outline'" aria-hidden="true" />
               <span class="font-body-sm text-body-sm text-on-surface-variant font-medium">{{ row.label }}</span>
             </div>
             <span

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '../../stores/profile.js'
+import { usePlanStore } from '../../stores/plan.js'
 import { useAuthStore } from '../../stores/auth.js'
 import { useUiStore } from '../../stores/ui.js'
 import Icon from '../../components/ui/Icon.vue'
@@ -14,6 +15,7 @@ import { formatPace, formatClock } from '../../domain/utils/pace.js'
 
 const router = useRouter()
 const profile = useProfileStore()
+const plan = usePlanStore()
 const auth = useAuthStore()
 const ui = useUiStore()
 
@@ -63,7 +65,13 @@ const screeningDone = computed(
   () => Boolean(d.value.screening?.q1) && Array.isArray(d.value.screening?.q2) && Boolean(d.value.screening?.q3),
 )
 
-onMounted(() => {
+onMounted(async () => {
+  ui.clearToasts()
+  try {
+    await profile.loadFromServer(auth.token)
+  } catch (error) {
+    ui.toast(error.message || '档案加载失败，请稍后重试', 'error')
+  }
   const current = Array.isArray(d.value.terrain) ? d.value.terrain : d.value.terrain ? [d.value.terrain] : []
   const normalized = current
     .filter((item) => item !== '操场')
@@ -96,6 +104,7 @@ const sectionComplete = computed(() => {
 })
 
 function set(key, value) {
+  ui.clearToasts()
   profile.patch({ [key]: value })
 }
 
@@ -114,6 +123,7 @@ function selectTarget(typeKey) {
 }
 
 function toggleInjury(part) {
+  ui.clearToasts()
   const list = d.value.injuries || []
   const exists = list.some((i) => i.part === part)
   profile.patch({
@@ -122,11 +132,13 @@ function toggleInjury(part) {
 }
 
 function toggleTerrain(terrain) {
+  ui.clearToasts()
   const current = Array.isArray(d.value.terrain) ? d.value.terrain : d.value.terrain ? [d.value.terrain] : []
   set('terrain', current.includes(terrain) ? current.filter((item) => item !== terrain) : [...current, terrain])
 }
 
 function toggleQ2(value) {
+  ui.clearToasts()
   const list = d.value.screening?.q2 || []
   if (value === 'none') {
     profile.setScreening('q2', ['none'])
@@ -143,6 +155,7 @@ function onTargetTimeSelect(e) {
 }
 
 function onBestTimeInput(e, timeKey, paceKey, distanceKm) {
+  ui.clearToasts()
   const minutes = Math.round(Number(e.target.value))
   const valid = Number.isFinite(minutes) && minutes > 0
   profile.patch({
@@ -158,11 +171,42 @@ function scrollToSection(key) {
 }
 
 function loadDemoProfile() {
-  profile.loadDemo(auth.currentDemoProfile.profile)
-  ui.toast(`已载入「${auth.currentDemoProfile.name}」档案`, 'success')
+  // 演示样本只随机生成跑者档案，不携带预设计划；清掉当前计划避免串用旧数据。
+  plan.reset()
+  profile.loadRandomDemo()
+  ui.toast('已随机载入一组演示档案，点击生成后由智程重新制定计划', 'success')
+}
+
+function missingProfileField() {
+  const required = [
+    ['gender', '生理性别'],
+    ['birthYear', '出生年份'],
+    ['heightCm', '身高'],
+    ['weightKg', '体重'],
+    ['targetType', '训练目标'],
+    ['targetTime', '目标完成成绩'],
+    ['weeklyKm', '近3个月周跑量'],
+    ['runsPerWeek', '最近每周跑步次数'],
+    ['longestRunKm', '最近最长一次连续跑'],
+    ['easyPace', '平时舒服慢跑配速'],
+    ['availableDays', '每周可训练天数'],
+    ['availableMin', '单次最大时长'],
+  ]
+  const missing = required.find(([key]) => d.value[key] === undefined || d.value[key] === null || d.value[key] === '')
+  if (missing) return missing[1]
+  if (!Array.isArray(d.value.terrain) || d.value.terrain.length === 0) return '主要训练场地'
+  if (!screeningDone.value) return '运动风险筛查'
+  return ''
 }
 
 async function handleGenerate() {
+  ui.clearToasts()
+  const missing = missingProfileField()
+  if (missing) {
+    ui.toast(`请先填写${missing}`, 'error')
+    scrollToSection(missing === '运动风险筛查' ? 'screening' : 'basis')
+    return
+  }
   const invalidKey = Object.keys(NUMERIC_RULES).find((key) => inputError(key))
   if (invalidKey) {
     ui.toast(inputError(invalidKey), 'error')
@@ -178,8 +222,13 @@ async function handleGenerate() {
     ui.toast(`还有必填项未完成（当前 ${profile.completionRatio}%）`, 'warn')
     return
   }
-  profile.confirm()
-  router.push('/profile/confirm')
+  try {
+    await profile.saveToServer(auth.token)
+    ui.toast('跑者档案已保存', 'success')
+    router.push('/profile/confirm')
+  } catch (error) {
+    ui.toast(error.message || '档案保存失败，请稍后重试', 'error')
+  }
 }
 </script>
 
@@ -287,6 +336,7 @@ async function handleGenerate() {
               min="1970"
               max="2010"
               step="1"
+                @input="ui.clearToasts()"
               @blur="inputError('birthYear')"
             />
             <p v-if="inputError('birthYear')" class="mt-1 text-[10px] leading-tight text-error">{{ inputError('birthYear') }}</p>
@@ -301,6 +351,7 @@ async function handleGenerate() {
               min="120"
               max="230"
               step="1"
+                @input="ui.clearToasts()"
             />
             <p v-if="inputError('heightCm')" class="mt-1 text-[10px] leading-tight text-error">{{ inputError('heightCm') }}</p>
           </div>
@@ -314,6 +365,7 @@ async function handleGenerate() {
               min="40"
               max="100"
               step="0.1"
+                @input="ui.clearToasts()"
             />
             <p v-if="inputError('weightKg')" class="mt-1 text-[10px] leading-tight text-error">{{ inputError('weightKg') }}</p>
           </div>
@@ -441,6 +493,7 @@ async function handleGenerate() {
               min="1"
               max="7"
               step="1"
+                @input="ui.clearToasts()"
             />
           </div>
           <div class="flex items-center gap-2">
@@ -453,6 +506,7 @@ async function handleGenerate() {
               min="1"
               max="30"
               step="0.1"
+                @input="ui.clearToasts()"
             />
           </div>
         </div>

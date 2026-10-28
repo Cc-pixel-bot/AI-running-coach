@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
-import { load, save } from '../services/storage.js'
+import { load, save, clearUserData } from '../services/storage.js'
 import { evaluateScreening } from '../domain/constants/screening.js'
 import { parseDuration } from '../domain/utils/pace.js'
 import { TARGET_TYPES } from '../domain/templates/trainingTemplates.js'
-import { DEMO_PROFILE } from '../data/demoSeed.js'
+import { DEMO_PROFILE, createRandomDemoProfile } from '../data/demoSeed.js'
+import { getProfileApi, saveProfileApi, confirmProfileApi } from '../services/profileApi.js'
 
 /** 跑者档案（建档草稿 + 筛查结果） */
 export const useProfileStore = defineStore('profile', {
@@ -66,6 +67,52 @@ export const useProfileStore = defineStore('profile', {
     persist() {
       save('profileDraft', this.draft)
     },
+    async loadFromServer(token) {
+      if (!token) return null
+      const result = await getProfileApi(token)
+      if (!result.profile) {
+        clearUserData()
+        this.draft = {}
+        this.confirmed = false
+        this.confirmedAt = null
+        save('profileDraft', {})
+        save('profileConfirmed', false)
+        save('profileConfirmedAt', null)
+        return null
+      }
+      const { profile, profileConfirmed, confirmedAt, id, ...draft } = result.profile
+      this.draft = draft
+      this.confirmed = Boolean(profileConfirmed)
+      this.confirmedAt = confirmedAt || null
+      save('profileDraft', this.draft)
+      save('profileConfirmed', this.confirmed)
+      save('profileConfirmedAt', this.confirmedAt)
+      return this.draft
+    },
+    async saveToServer(token) {
+      if (!token) throw new Error('登录已失效，请重新登录')
+      const result = await saveProfileApi(token, {
+        ...this.draft,
+        riskLevel: this.screeningResult.riskLevel,
+      })
+      const { profile, profileConfirmed, confirmedAt, id, ...draft } = result.profile
+      this.draft = draft
+      this.confirmed = Boolean(profileConfirmed)
+      this.confirmedAt = confirmedAt || null
+      save('profileDraft', this.draft)
+      save('profileConfirmed', this.confirmed)
+      save('profileConfirmedAt', this.confirmedAt)
+      return this.draft
+    },
+    async confirmOnServer(token) {
+      if (!token) throw new Error('登录已失效，请重新登录')
+      const result = await confirmProfileApi(token)
+      this.confirmed = Boolean(result.profile?.profileConfirmed)
+      this.confirmedAt = result.profile?.confirmedAt || new Date().toISOString()
+      save('profileConfirmed', this.confirmed)
+      save('profileConfirmedAt', this.confirmedAt)
+      return this.confirmed
+    },
     patch(values) {
       this.draft = { ...this.draft, ...values }
       save('profileDraft', this.draft)
@@ -87,10 +134,13 @@ export const useProfileStore = defineStore('profile', {
     },
     loadDemo(profile = DEMO_PROFILE) {
       this.patch({ ...profile })
-      this.confirmed = true
-      this.confirmedAt = new Date().toISOString()
-      save('profileConfirmed', true)
-      save('profileConfirmedAt', this.confirmedAt)
+      this.confirmed = false
+      this.confirmedAt = null
+      save('profileConfirmed', false)
+      save('profileConfirmedAt', null)
+    },
+    loadRandomDemo() {
+      this.loadDemo(createRandomDemoProfile())
     },
     confirm() {
       this.confirmed = true

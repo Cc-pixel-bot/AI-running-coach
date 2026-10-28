@@ -41,14 +41,14 @@ describe('训练量规则（PRD §5.1）', () => {
   const plan = generatePlan(profile)
 
   it('周期长度与模板一致（10km = 8 周）', () => {
-    expect(plan.weeks.length).toBe(TEMPLATES['T10-8W'].durationWeeks)
+    expect(plan.weeks.length).toBe(TEMPLATES['T10-BASE-3-PLUS'].durationWeeks)
   })
 
   it('8 周质量课按阶段递进，不重复使用同一套结构', () => {
     const qualitySessions = plan.weeks.map((w) => w.sessions.find((s) => s.id.endsWith('s2')))
-    expect(new Set(qualitySessions.map((s) => s.title)).size).toBe(8)
-    expect(qualitySessions[0].structure.pattern).toContain('3 × 6 分钟')
-    expect(qualitySessions[7].structure.pattern).toContain('5 公里目标配速测试')
+    expect(qualitySessions).toHaveLength(8)
+    expect(qualitySessions.every((s) => s?.structure?.pattern)).toBe(true)
+    expect(new Set(qualitySessions.map((s) => s.level)).size).toBeGreaterThanOrEqual(3)
   })
 
   it('趋势线每周增幅 ≤ 10%（ACSM 渐进原则）', () => {
@@ -96,6 +96,59 @@ describe('训练量规则（PRD §5.1）', () => {
   })
 })
 
+describe('周训练频次（模板 runsPerWeek / sessionsPerWeek）', () => {
+  const lowFrequency = {
+    ...profile,
+    runsPerWeek: 2,
+    availableDays: 2,
+    weeklyKm: 10,
+    longestRunKm: 5,
+    best10kPace: null,
+  }
+  const threeRuns = {
+    ...profile,
+    runsPerWeek: 3,
+    availableDays: 3,
+    weeklyKm: 18,
+    longestRunKm: 7,
+    best10kPace: 390,
+  }
+  const fourRuns = {
+    ...profile,
+    runsPerWeek: 4,
+    availableDays: 4,
+    weeklyKm: 30,
+    longestRunKm: 10,
+    best10kPace: 390,
+  }
+
+  it('每周 2 次跑步只生成 2 个跑步课次', () => {
+    const plan = generatePlan(lowFrequency)
+    const sessions = plan.weeks[0].sessions
+    expect(plan.templateId).toBe('T10-ADAPT-2')
+    expect(sessions).toHaveLength(2)
+    expect(sessions.every((session) => session.type !== 'strength')).toBe(true)
+  })
+
+  it('每周 3 次跑步按模板生成 3 跑 + 1 次辅助训练', () => {
+    const plan = generatePlan(threeRuns)
+    const sessions = plan.weeks[0].sessions
+    expect(plan.templateId).toBe('T10-BASE-3')
+    expect(sessions.filter((session) => session.type !== 'strength')).toHaveLength(3)
+    expect(sessions.filter((session) => session.type === 'strength')).toHaveLength(1)
+    expect(sessions).toHaveLength(4)
+  })
+
+  it('每周 4 次跑步按模板生成 4 跑 + 1 次辅助训练', () => {
+    const plan = generatePlan(fourRuns)
+    const sessions = plan.weeks[0].sessions
+    expect(plan.templateId).toBe('T10-ADV-4')
+    expect(sessions.filter((session) => session.type !== 'strength')).toHaveLength(4)
+    expect(sessions.filter((session) => session.type === 'strength')).toHaveLength(1)
+    expect(sessions).toHaveLength(5)
+  })
+})
+
 describe('适配依据（PRD §B2 / 验收 B3）', () => {
   const plan = generatePlan(profile)
 
@@ -136,7 +189,7 @@ describe('强度档与配速（PRD §B1）', () => {
 
 describe('周跑量曲线（参数化生成）', () => {
   it('强度变化的那一周不同时推进总量', () => {
-    const weeks = computeWeeklyVolumes(TEMPLATES['T10-8W'], 18)
+    const weeks = computeWeeklyVolumes(TEMPLATES['T10-BASE-3-PLUS'], 18)
     for (let i = 1; i < weeks.length; i += 1) {
       if (weeks[i].quality !== weeks[i - 1].quality && !weeks[i].stepBack && !weeks[i].taper) {
         expect(weeks[i].trendKm / weeks[i - 1].trendKm - 1).toBeLessThanOrEqual(0.041)

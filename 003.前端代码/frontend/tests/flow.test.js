@@ -1,9 +1,55 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlanStore } from '../stores/plan.js'
 import { useRunStore } from '../stores/run.js'
 import { useProfileStore } from '../stores/profile.js'
 import { DEMO_PROFILE } from '../data/demoSeed.js'
+
+vi.mock('../services/authApi.js', () => ({
+  generateAiPlanApi: vi.fn(async (_token, profile) => {
+    if (profile.screening?.q2?.includes('chest_pain')) {
+      return { status: 'blocked', message: '当前风险筛查需要医疗确认' }
+    }
+    return {
+      status: 'completed',
+      plan: {
+        templateId: 'T10-BASE-3-PLUS',
+        templateName: '10 公里基础提升型',
+        targetDistance: '10K',
+        goalPace: '5分30秒/公里',
+        goalTotalSec: profile.targetTotalSec,
+        status: 'ready',
+        currentWeek: 1,
+        totalWeeks: 8,
+        weeks: Array.from({ length: 8 }, (_, index) => ({
+          week: index + 1,
+          phase: '基础提升',
+          focus: '逐步提升耐力与配速稳定性',
+          totalKm: 24,
+          sessions: [
+            {
+              id: `w${index + 1}s1`,
+              week: index + 1,
+              dayOffset: 0,
+              dayLabel: '第1天',
+              status: 'upcoming',
+              type: 'tempo',
+              title: '节奏跑',
+              distanceKm: 6,
+              durationMin: 40,
+              intensity: '受控',
+              description: '保持稳定节奏，完成主体跑步训练内容。',
+              structure: '热身 → 节奏跑 → 放松',
+              warmup: '练前动态热身内容',
+              cooldown: '练后静态拉伸内容',
+            },
+          ],
+        })),
+        sourceRefs: [],
+      },
+    }
+  }),
+}))
 
 /**
  * 闭环集成测试：档案 → 计划 → 训练 → 反馈 → 调整 → 计划真的变了
@@ -13,9 +59,10 @@ describe('Demo 主链路闭环', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    localStorage.setItem('zhicheng:authToken', JSON.stringify('test-token'))
   })
 
-  it('10km 用户走完整条链路后，计划确实被规则引擎改写', async () => {
+  it('10km 用户走完整条链路后，计划确实被调整并写回', async () => {
     const profile = useProfileStore()
     const planStore = usePlanStore()
     const run = useRunStore()
@@ -70,7 +117,7 @@ describe('Demo 主链路闭环', () => {
     expect(JSON.stringify(planStore.plan)).not.toBe(planBeforeAdjust)
 
     // ⑧ 课次被标记完成，本周课次全部完成时解锁下一周
-    expect(planStore.plan.weeks[0].sessions.some((s) => s.status === 'done')).toBe(true)
+    expect(planStore.plan.weeks.flatMap((w) => w.sessions).find((s) => s.id === session.id)?.status).toBe('done')
   })
 
   it('安全闸门命中时不生成计划（不进入训练）', async () => {

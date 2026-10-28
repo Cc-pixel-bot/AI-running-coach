@@ -135,6 +135,19 @@ function confirmFinish() {
         </div>
       </section>
 
+      <section v-if="run.gpsError" class="px-gutter py-space-xs">
+        <div class="rounded-xl bg-error-container p-4 text-on-error-container">
+          <div class="flex items-start gap-2">
+            <Icon name="warning" :size="20" class="shrink-0 mt-0.5" />
+            <div>
+              <p class="font-body-md text-body-md font-semibold">无法获取真实 GPS</p>
+              <p class="font-body-sm text-body-sm mt-1 leading-relaxed">{{ run.gpsError }}</p>
+              <p class="font-body-sm text-body-sm mt-2 leading-relaxed">请确认已允许浏览器定位权限，并使用 localhost 或 HTTPS 打开网站。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 三项指标 -->
       <section class="px-gutter py-space-xs grid grid-cols-3 gap-2">
         <StatTile
@@ -167,7 +180,7 @@ function confirmFinish() {
               <span class="font-headline-sm text-headline-sm text-on-surface font-bold">实时轨迹</span>
             </div>
             <span class="font-label-caps text-label-caps text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded">
-              {{ points.length }} 个定位点 · 1 Hz
+              {{ points.length }} 个真实定位点
             </span>
           </div>
           <TrackMap :points="points" :status="run.status" />

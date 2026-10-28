@@ -370,7 +370,7 @@ function completeTodayTraining() {
             </h3>
             <div class="flex items-center gap-2 shrink-0">
               <span class="font-label-data text-label-data" :class="isCompleted ? 'text-success' : 'text-secondary'">
-                {{ isCompleted ? '全部已记录' : `${session.warmup?.length || 0} 个动作` }}
+                {{ isCompleted ? '全部已记录' : `${session.preRunWarmup?.exercises?.length || session.warmup?.length || 0} 个动作 · ${session.preRunWarmup?.duration || 5} 分钟` }}
               </span>
               <button
                 v-if="isTodayTraining"
@@ -407,7 +407,7 @@ function completeTodayTraining() {
 
           <div class="bg-surface-container-lowest rounded-xl p-3 shadow-card flex flex-col gap-1">
             <label
-              v-for="(w, i) in session.warmup || []"
+              v-for="(w, i) in session.preRunWarmup?.exercises || session.warmup || []"
               :key="w.id"
               class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer select-none"
             >
@@ -419,7 +419,10 @@ function completeTodayTraining() {
                   :disabled="!canEditPrep"
                   @change="toggle(warmupDone, i)"
                 />
-                <span class="font-body-md text-body-md text-on-surface truncate">{{ w.name }}</span>
+                <div class="min-w-0">
+                  <span class="font-body-md text-body-md text-on-surface block truncate">{{ w.name }}</span>
+                  <span class="text-[10px] text-outline block truncate">{{ w.instruction || w.points }}</span>
+                </div>
               </div>
               <span class="font-label-data text-label-data text-on-surface-variant shrink-0">{{ w.dose }}</span>
             </label>
@@ -435,7 +438,7 @@ function completeTodayTraining() {
             <h3 class="session-section-title-offset font-headline-sm text-headline-sm text-on-surface">练后静态拉伸</h3>
             <div class="flex items-center gap-2 shrink-0">
               <span class="font-label-data text-label-data" :class="isCompleted ? 'text-success' : 'text-on-surface-variant'">
-                {{ isCompleted ? '全部已记录' : `${session.cooldown?.length || 0} 处放松` }}
+                {{ isCompleted ? '全部已记录' : `${session.postRunStretch?.exercises?.length || session.cooldown?.length || 0} 个动作 · ${session.postRunStretch?.duration || 5} 分钟` }}
               </span>
               <button
                 v-if="isTodayTraining"
@@ -472,7 +475,7 @@ function completeTodayTraining() {
 
           <div class="bg-surface-container-lowest rounded-xl p-3 shadow-card flex flex-col gap-1">
             <label
-              v-for="(c, i) in session.cooldown || []"
+              v-for="(c, i) in session.postRunStretch?.exercises || session.cooldown || []"
               :key="c.id"
               class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer select-none"
             >
