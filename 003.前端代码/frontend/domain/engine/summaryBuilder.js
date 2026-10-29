@@ -1,23 +1,22 @@
 /**
- * AI 训练总结（四段式）—— PRD v1.2 §E1。
- *
- * 关键约束（PRD 原文）：
- *  - ①② 中所有数字必须来自结构化数据（引擎计算后注入模板变量），LLM 只组织语言
- *  - ③ 的判断依据是反馈表单的结构化字段 + 自由文本提取结果
- *  - ④ 不自由发挥：只能引用规则引擎给出的调整项集合
- *  - 兜底：LLM 超时/失败 → 使用纯模板生成总结（数字仍正确，文字较机械）
- *
- * 本实现直接以模板方式生成，保证 Demo 现场 100% 可复现（PRD §7.3「演示模式」）。
+ * 训练总结展示数据。正式总结和计划调整由后端 AI 返回；这里保留基础数据展示，
+ * 用于 AI 服务异常时让训练记录仍然可查看。
  */
 import { formatPace, formatDuration, formatDurationCn } from '../utils/pace.js'
-import { completionLabel } from './adjustEngine.js'
+
+const completionLabels = {
+  full: '完全完成',
+  mostly: '基本完成',
+  partial: '部分完成',
+  none: '未完成',
+}
 
 /**
  * @param {object} params
  * @param {object} params.session 课次
  * @param {object} params.record 训练记录 {actualDistanceKm, actualDurationSec, avgPace, bestPace, pauseCount, zoneSeconds}
  * @param {object} params.feedback 反馈
- * @param {Array} params.adjustments 规则引擎给出的调整集合
+ * @param {Array} params.adjustments AI 返回的调整集合
  */
 export function buildSummary({ session, record, feedback, adjustments = [] }) {
   const planned = session?.distanceKm || 0
@@ -72,15 +71,15 @@ export function buildSummary({ session, record, feedback, adjustments = [] }) {
   if (painScore >= 4) watch.push(`疼痛评分 ${painScore} 分（部位：${(feedback?.painParts || []).join('、') || '未标注'}），需要重点处理`)
   else if (painScore >= 2) watch.push(`有轻微不适（疼痛评分 ${painScore} 分），下一课次注意强度控制`)
   if (targetRpe && rpe >= targetRpe + 2) watch.push(`RPE ${rpe} 明显高于本课目标 ${targetRpe}，提示累计疲劳偏高`)
-  if (completion === 'none' || completion === 'partial') watch.push(`完成度为「${completionLabel(completion)}」，负荷与恢复的匹配度需要下调`)
+  if (completion === 'none' || completion === 'partial') watch.push(`完成度为「${completionLabels[completion] || completion}」，负荷与恢复的匹配度需要下调`)
   if (record?.pauseCount >= 2) watch.push(`本次暂停 ${record.pauseCount} 次，提示配速或恢复存在问题`)
   if (feedback?.feel === 'very_hard') watch.push('自评「明显吃力」，下一次建议下调质量课强度')
   if (!watch.length) watch.push('没有需要特别处理的信号，保持当前节奏即可')
 
-  // —— ④ 下一步（只能引用调整项集合）——
+  // —— ④ 下一步（展示 AI 返回的调整结果）——
   const nextSteps = adjustments.length
     ? adjustments.map((a) => a.reasonText)
-    : ['本次数据未触发任何调整规则，计划按原样继续推进。']
+    : ['本次训练状态与当前计划匹配，继续执行原计划。']
 
   return {
     structure: [
@@ -128,7 +127,7 @@ export function buildSummary({ session, record, feedback, adjustments = [] }) {
 export function fallbackSummary({ record, feedback }) {
   return `本次训练 ${record?.actualDistanceKm?.toFixed(2) || '0.00'}km，用时 ${formatDurationCn(
     record?.actualDurationSec || 0,
-  )}，平均配速 ${formatPace(record?.avgPace || 0)}，完成度「${completionLabel(feedback?.completion)}」，RPE ${
+  )}，平均配速 ${formatPace(record?.avgPace || 0)}，完成度「${completionLabels[feedback?.completion] || feedback?.completion || '--'}」，RPE ${
     feedback?.rpe ?? '--'
   }，疼痛 ${feedback?.painScore ?? 0} 分。`
 }

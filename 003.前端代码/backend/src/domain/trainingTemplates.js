@@ -1,12 +1,12 @@
 /**
  * 后端唯一可信的 10K Demo 模板库。
- * 周跑量、频率和分层数值均为“产品 Demo 规则”，不是国家标准。
+ * 周跑量、频率和分层数值均为当前 Demo 的模板配置，不是国家标准。
  */
 
 export const QUALITY_SESSION_META = {
   tempo: { title: '节奏跑', pattern: '热身 → 受控节奏段 → 放松' },
   interval: { title: '间歇跑', pattern: '热身 → 分段快跑与慢跑恢复 → 放松' },
-  race: { title: '比赛配速跑', pattern: '热身 → 目标配速段 → 放松' },
+  race: { title: '专项节奏跑', pattern: '热身 → 目标配速段 → 放松' },
   aerobic: { title: '有氧跑', pattern: '全程轻松匀速有氧 → 放松' },
 }
 
@@ -34,7 +34,7 @@ const ADAPT = [
   ['build', '基础提升', 'tempo', false, false, '引入短时受控节奏', quality('短节奏跑', '热身 → 短节奏段 → 慢跑恢复 → 放松', '节奏段保持可控。')],
   ['build', '回撤周', 'aerobic', true, false, '巩固训练习惯', quality('轻松有氧', '轻松匀速跑，不做加速', '降低总量，保留连续性。')],
   ['specific', '专项准备', 'race', false, false, '熟悉 10 公里专项节奏', quality('短目标配速', '热身 → 短目标配速段 → 放松', '保持节奏均匀。')],
-  ['taper', '赛前减量', 'race', false, true, '降低总量，保持轻快和信心', quality('轻量专项唤醒', '热身 → 少量目标配速段 → 放松', '不补课、不追加强度。')],
+  ['taper', '周期末减量', 'race', false, true, '降低总量，保持轻快和信心', quality('轻量专项唤醒', '热身 → 少量目标配速段 → 放松', '不补课、不追加强度。')],
 ]
 
 const BASE = [
@@ -44,7 +44,7 @@ const BASE = [
   ['specific', '专项提升', 'tempo', false, false, '建立 10 公里专项耐力', quality('分段节奏', '热身 → 分段节奏跑 → 慢跑恢复 → 放松', '优先保持动作和节奏稳定。')],
   ['build', '回撤周', 'tempo', true, false, '保持节奏感并降低总量', quality('短节奏维持', '热身 → 短节奏段 → 放松', '保留适量质量刺激。')],
   ['specific', '专项提升', 'race', false, false, '检验专项准备', quality('目标配速跑', '热身 → 目标配速段 → 放松', '均匀控制目标配速。')],
-  ['taper', '赛前减量', 'race', false, true, '减少总量，保留新鲜感', quality('减量专项', '热身 → 少量目标配速段 → 放松', '减量优先，保证恢复。')],
+  ['taper', '周期末减量', 'race', false, true, '减少总量，保留新鲜感', quality('减量专项', '热身 → 少量目标配速段 → 放松', '减量优先，保证恢复。')],
 ]
 
 const ADVANCED = [
@@ -54,7 +54,7 @@ const ADVANCED = [
   ['specific', '专项提升', 'interval', false, false, '提升速度储备与速度耐力', quality('分段间歇', '热身 → 多组快跑与慢跑恢复 → 放松', '每组保持可重复。')],
   ['specific', '回撤周', 'tempo', true, false, '降低总量，保留受控节奏', quality('短节奏维持', '热身 → 短节奏段 → 放松', '为最后专项周保留恢复空间。')],
   ['specific', '专项提升', 'race', false, false, '完成目标配速专项练习', quality('10 公里专项节奏', '热身 → 分段目标配速 → 放松', '不做全力测试。')],
-  ['taper', '赛前减量', 'race', false, true, '降低总量，保持速度感觉', quality('赛前唤醒', '热身 → 少量目标配速段 → 放松', '避免追加强度影响状态。')],
+  ['taper', '周期末减量', 'race', false, true, '降低总量，保持速度感觉', quality('目标配速唤醒', '热身 → 少量目标配速段 → 放松', '避免追加强度影响状态。')],
 ]
 
 function expand(phases) {

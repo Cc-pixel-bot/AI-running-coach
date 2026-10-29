@@ -2,14 +2,14 @@
  * 10 公里专业训练模板库（Demo）。
  *
  * 三类名称是产品内部分类，不是官方分类。周跑量、频率和分层数值均为
- * “产品 Demo 规则”，由 planEngine 结合跑者档案再次约束。
- * 模板只描述每周结构；每日距离、时长、配速和动作由 planEngine 生成。
+ * 当前 Demo 的训练模板配置，供后端 AI 生成计划时参考。
+ * 模板描述周期结构；每日距离、时长、配速和动作由 AI 结合跑者档案生成。
  */
 
 export const QUALITY_SESSION_META = {
   tempo: { title: '节奏跑', icon: 'speed', structure: '热身 → 受控节奏段 → 放松', purpose: '提高持续跑能力，保持可控强度。' },
   interval: { title: '间歇跑', icon: 'bolt', structure: '热身 → 分段快跑与慢跑恢复 → 放松', purpose: '提升速度储备，优先保持各组节奏稳定。' },
-  race: { title: '比赛配速跑', icon: 'flag', structure: '热身 → 目标配速段 → 放松', purpose: '建立 10 公里专项节奏感，避免前快后慢。' },
+  race: { title: '专项节奏跑', icon: 'flag', structure: '热身 → 目标配速段 → 放松', purpose: '建立 10 公里专项节奏感，避免前快后慢。' },
   aerobic: { title: '有氧跑', icon: 'directions_run', structure: '全程轻松匀速有氧 → 放松', purpose: '巩固有氧基础，帮助身体吸收训练负荷。' },
 }
 
@@ -47,7 +47,7 @@ const ADAPT = [
   { weeks: 1, phase: 'build', phaseName: '基础提升', quality: 'tempo', focus: '引入短时受控节奏，提升持续跑能力', qualityPlan: { title: '短节奏跑', pattern: '热身 → 短节奏段 → 慢跑恢复 → 放松', description: '节奏段保持可控，结束后应能较快恢复。' } },
   { weeks: 1, phase: 'build', phaseName: '回撤周', quality: 'aerobic', stepBack: true, focus: '第二次回撤，巩固训练习惯', qualityPlan: { title: '轻松有氧', pattern: '轻松匀速跑，不做加速', description: '降低总量，保留规律训练感觉。' } },
   { weeks: 1, phase: 'specific', phaseName: '专项准备', quality: 'race', focus: '用短目标配速段熟悉 10 公里节奏', qualityPlan: { title: '短目标配速', pattern: '热身 → 短目标配速段 → 放松', description: '只做短时间专项体验，保持节奏均匀。' } },
-  { weeks: 1, phase: 'taper', phaseName: '赛前减量', quality: 'race', taper: true, focus: '降低总量，保持轻快和信心', qualityPlan: { title: '轻量专项唤醒', pattern: '热身 → 少量目标配速段 → 放松', description: '赛前减量，不补课、不追加强度。' } },
+  { weeks: 1, phase: 'taper', phaseName: '周期末减量', quality: 'race', taper: true, focus: '降低总量，保持轻快和信心', qualityPlan: { title: '轻量专项唤醒', pattern: '热身 → 少量目标配速段 → 放松', description: '周期末减量，不补课、不追加强度。' } },
 ]
 
 const BASE = [
@@ -57,7 +57,7 @@ const BASE = [
   { weeks: 1, phase: 'specific', phaseName: '专项提升', quality: 'tempo', focus: '延长节奏段，建立 10 公里专项耐力', qualityPlan: { title: '分段节奏', pattern: '热身 → 分段节奏跑 → 慢跑恢复 → 放松', description: '分段完成，优先保持动作和节奏稳定。' } },
   { weeks: 1, phase: 'build', phaseName: '回撤周', quality: 'tempo', stepBack: true, focus: '第二次回撤，保持节奏感并降低总量', qualityPlan: { title: '短节奏维持', pattern: '热身 → 短节奏段 → 放松', description: '减少总量，保留适量质量刺激。' } },
   { weeks: 1, phase: 'specific', phaseName: '专项提升', quality: 'race', focus: '完成较长目标配速段，检验专项准备', qualityPlan: { title: '目标配速跑', pattern: '热身 → 目标配速段 → 放松', description: '均匀控制目标配速，不提前冲刺。' } },
-  { weeks: 1, phase: 'taper', phaseName: '赛前减量', quality: 'race', taper: true, focus: '减少总量，保留节奏和新鲜感', qualityPlan: { title: '减量专项', pattern: '热身 → 少量目标配速段 → 放松', description: '减量优先，保证恢复。' } },
+  { weeks: 1, phase: 'taper', phaseName: '周期末减量', quality: 'race', taper: true, focus: '减少总量，保留节奏和新鲜感', qualityPlan: { title: '减量专项', pattern: '热身 → 少量目标配速段 → 放松', description: '减量优先，保证恢复。' } },
 ]
 
 const ADVANCED = [
@@ -67,7 +67,7 @@ const ADVANCED = [
   { weeks: 1, phase: 'specific', phaseName: '专项提升', quality: 'interval', focus: '提升速度储备与速度耐力', qualityPlan: { title: '分段间歇', pattern: '热身 → 多组快跑与慢跑恢复 → 放松', description: '每组保持可重复，宁可保守也不前快后慢。' } },
   { weeks: 1, phase: 'specific', phaseName: '回撤周', quality: 'tempo', stepBack: true, focus: '降低总量，保留受控节奏', qualityPlan: { title: '短节奏维持', pattern: '热身 → 短节奏段 → 放松', description: '为最后专项周保留恢复空间。' } },
   { weeks: 1, phase: 'specific', phaseName: '专项提升', quality: 'race', focus: '完成目标配速专项练习', qualityPlan: { title: '10 公里专项节奏', pattern: '热身 → 分段目标配速 → 放松', description: '检验节奏控制和专项耐力，不做全力测试。' } },
-  { weeks: 1, phase: 'taper', phaseName: '赛前减量', quality: 'race', taper: true, focus: '降低总量，保持速度感觉', qualityPlan: { title: '赛前唤醒', pattern: '热身 → 少量目标配速段 → 放松', description: '减少训练量，避免追加强度影响状态。' } },
+  { weeks: 1, phase: 'taper', phaseName: '周期末减量', quality: 'race', taper: true, focus: '降低总量，保持速度感觉', qualityPlan: { title: '目标配速唤醒', pattern: '热身 → 少量目标配速段 → 放松', description: '减少训练量，避免追加强度影响状态。' } },
 ]
 
 function createTemplate({ id, name, runsPerWeek, sessionsPerWeek, goalTypes, volumePolicy, blueprint }) {

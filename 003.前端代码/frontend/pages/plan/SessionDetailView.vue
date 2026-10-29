@@ -13,6 +13,7 @@ import CoachBanner from '../../components/coach/CoachBanner.vue'
 import { COACH_DIALOGUES, COACH_QUOTES } from '../../data/exercises.js'
 import { formatPace } from '../../domain/utils/pace.js'
 import { STOP_SIGNALS } from '../../domain/constants/screening.js'
+import planTrackHero from '../../assets/plan-track-hero.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +26,8 @@ const warmupDone = ref([])
 const cooldownDone = ref([])
 const showStructure = ref(false)
 const completing = ref(false)
+const showCompletionModal = ref(false)
+const showIncompleteModal = ref(false)
 const coachQuoteIndex = ref(0)
 
 const session = computed(() => {
@@ -52,7 +55,9 @@ const canEditPrep = computed(() =>
   isTodayTraining.value && (!isCompleted.value || route.query.feedbackSubmitted === '1'),
 )
 const completedRecord = computed(() =>
-  history.records.find((record) => record.sessionId === session.value?.id) || null,
+  isCompleted.value
+    ? history.records.find((record) => record.sessionId === session.value?.id) || null
+    : null,
 )
 const actualRecord = computed(() =>
   completedRecord.value || (run.record?.sessionId === session.value?.id ? run.record : null),
@@ -66,15 +71,22 @@ const coachAdvice = computed(() => {
   if (options?.length) return options[coachQuoteIndex.value % options.length]
   return COACH_QUOTES[key] || COACH_QUOTES[session.value?.intensity?.level] || COACH_QUOTES.easy
 })
+function cleanTrainingCopy(text) {
+  return String(text || '')
+    .replace(/能够?自如交谈|能持续对话|能正常说话|能说完整句但不能唱歌|能对话/g, '保持呼吸稳定、动作放松')
+    .replace(/能说短句|只能说短句|只能蹦词/g, '保持受控用力')
+    .replace(/请严格\s*/g, '')
+    .replace(/务必\s*/g, '')
+}
 const recordedDuration = computed(() => {
   if (!completedRecord.value?.actualDurationSec) return session.value?.durationMin || 0
   return Math.round(completedRecord.value.actualDurationSec / 60)
 })
 const recordedDistance = computed(() =>
-  completedRecord.value?.actualDistanceKm ?? session.value?.distanceKm ?? 0,
+  isCompleted.value ? (completedRecord.value?.actualDistanceKm ?? session.value?.distanceKm ?? 0) : (session.value?.distanceKm ?? 0),
 )
 const recordedPace = computed(() =>
-  completedRecord.value?.avgPace || session.value?.intensity?.paceLow || 0,
+  isCompleted.value ? (completedRecord.value?.avgPace || session.value?.intensity?.paceLow || 0) : (session.value?.intensity?.paceLow || 0),
 )
 const recordedRpe = computed(() =>
   completedRecord.value?.feedback?.rpe || session.value?.intensity?.rpe?.[0] || 0,
@@ -87,6 +99,11 @@ const cooldownAllDone = computed(() => {
   const total = session.value?.cooldown?.length || 0
   return total > 0 && ((!canEditPrep.value && isCompleted.value) || cooldownDone.value.length === total)
 })
+const mainRunDone = computed(() => isStrength.value || run.record?.sessionId === session.value?.id)
+const warmupIncomplete = computed(() => Boolean(session.value?.warmup?.length) && !warmupAllDone.value)
+const mainRunIncomplete = computed(() => !mainRunDone.value)
+const cooldownIncomplete = computed(() => Boolean(session.value?.cooldown?.length) && !cooldownAllDone.value)
+const hasIncompleteTraining = computed(() => warmupIncomplete.value || mainRunIncomplete.value || cooldownIncomplete.value)
 
 watch(
   () => `${route.name}:${session.value?.id || ''}`,
@@ -119,16 +136,14 @@ function toggle(list, index) {
 
 function completeWarmup() {
   if (!canEditPrep.value) return
-  warmupDone.value = (session.value?.warmup || []).map((_, index) => index)
+  warmupDone.value = warmupAllDone.value ? [] : (session.value?.warmup || []).map((_, index) => index)
   persistPrepChecklist()
-  ui.toast('练前动态激活动作已全部完成', 'success')
 }
 
 function completeCooldown() {
   if (!canEditPrep.value) return
-  cooldownDone.value = (session.value?.cooldown || []).map((_, index) => index)
+  cooldownDone.value = cooldownAllDone.value ? [] : (session.value?.cooldown || []).map((_, index) => index)
   persistPrepChecklist()
-  ui.toast('练后静态拉伸动作已全部完成', 'success')
 }
 
 function startRun() {
@@ -140,13 +155,19 @@ function startRun() {
   router.push({ name: 'run-live', query: { session: session.value.id } })
 }
 
-function completeTodayTraining() {
+async function completeTodayTraining(allowIncomplete = false) {
   if (!session.value || completing.value) return
   completing.value = true
 
-  if (run.feedback) {
+  if (run.record?.sessionId === session.value.id && run.feedback) {
     completing.value = false
     router.push('/summary')
+    return
+  }
+
+  if (!allowIncomplete && hasIncompleteTraining.value) {
+    completing.value = false
+    showIncompleteModal.value = true
     return
   }
 
@@ -154,22 +175,38 @@ function completeTodayTraining() {
     const pace = session.value.intensity?.paceLow || 360
     run.session = session.value
     run.record = {
-      id: `rec_demo_${Date.now().toString(36)}`,
+      id: `rec_local_${Date.now().toString(36)}`,
       sessionId: session.value.id,
       sessionTitle: session.value.title,
       week: session.value.week,
       date: new Date().toISOString().slice(0, 10),
       type: session.value.type,
-      actualDistanceKm: session.value.distanceKm || 0,
-      actualDurationSec: (session.value.durationMin || 0) * 60,
-      avgPace: pace,
-      bestPace: pace,
+      actualDistanceKm: 0,
+      actualDurationSec: 0,
+      avgPace: 0,
+      bestPace: 0,
       pauseCount: 0,
       zoneSeconds: {},
     }
   }
+  await run.persistRecordToServer()
+  await run.completeTraining()
   completing.value = false
-  router.push({ name: 'feedback', query: { record: run.record.id } })
+  showCompletionModal.value = true
+}
+
+function confirmIncompleteTraining() {
+  showIncompleteModal.value = false
+  completeTodayTraining(true)
+}
+
+function closeCompletionModal() {
+  showCompletionModal.value = false
+}
+
+function openFeedback() {
+  showCompletionModal.value = false
+  router.push({ name: 'feedback', query: { record: run.record?.id } })
 }
 
 </script>
@@ -287,7 +324,7 @@ function completeTodayTraining() {
         </section>
 
         <AppButton
-          v-if="isTodayTraining && !isStrength && !isCompleted"
+           v-if="isTodayTraining && !isStrength && !isCompleted"
           class="w-full"
           variant="primary"
           icon="directions_run"
@@ -314,30 +351,20 @@ function completeTodayTraining() {
           <div v-if="showStructure" class="pt-3 space-y-2">
             <div class="bg-surface-container-low rounded-lg p-3">
               <p class="font-body-sm text-body-sm text-on-surface leading-relaxed">
-                {{ session.description }}
+                {{ cleanTrainingCopy(session.description) }}
               </p>
               <p v-if="session.structure" class="font-body-sm text-body-sm text-primary mt-1">
-                结构：{{ session.structure.pattern }}
+                结构：{{ cleanTrainingCopy(session.structure.pattern) }}
               </p>
-              <p v-if="session.structure" class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+              <p v-if="session.structure && (session.structure.warmupKm > 0 || session.structure.cooldownKm > 0)" class="font-body-sm text-body-sm text-on-surface-variant mt-1">
                 热身{{ session.structure.warmupKm }}公里（轻松）→主体{{ session.structure.mainKm }}公里（{{
                   session.structure.mainLevel === 'tempo' ? '节奏' : session.structure.mainLevel === 'interval' ? '间歇' : '目标配速'
                 }}档）→放松{{ session.structure.cooldownKm }}公里（轻松）
               </p>
             </div>
-            <div class="bg-surface-container-low rounded-lg p-3">
-              <p class="font-label-caps text-label-caps text-on-surface-variant">强度锚点（三轨任选其一）</p>
-              <div class="pt-1 space-y-1">
-                <p class="text-body-sm"><span class="text-on-surface-variant">主观用力：</span>{{ session.intensity.effort }}（强度 {{ session.intensity.rpe?.[0] }}–{{ session.intensity.rpe?.[1] }}）</p>
-                <p class="text-body-sm"><span class="text-on-surface-variant">心率区间：</span>{{ session.intensity.hrZone }}</p>
-                <p v-if="session.intensity.paceHigh" class="text-body-sm">
-                  <span class="text-on-surface-variant">配速偏移：</span>{{ formatPace(session.intensity.paceLow) }}–{{ formatPace(session.intensity.paceHigh) }}/公里
-                </p>
-              </div>
-            </div>
             <div v-if="session.adaptationNote" class="bg-primary-fixed/60 rounded-lg p-3 flex gap-2">
               <Icon name="lightbulb" :size="16" class="text-primary shrink-0 mt-0.5" />
-              <p class="text-body-sm text-on-surface leading-relaxed">适配说明：{{ session.adaptationNote }}</p>
+              <p class="text-body-sm text-on-surface leading-relaxed">适配说明：{{ cleanTrainingCopy(session.adaptationNote) }}</p>
             </div>
           </div>
         </section>
@@ -377,10 +404,9 @@ function completeTodayTraining() {
                 class="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors"
                 :class="warmupAllDone ? 'bg-success-container text-on-success-container' : 'bg-primary-fixed text-primary'"
                 type="button"
-                :disabled="warmupAllDone"
                 @click="completeWarmup"
               >
-                {{ warmupAllDone ? '已完成' : '一键完成' }}
+                {{ warmupAllDone ? '取消完成' : '一键完成' }}
               </button>
             </div>
           </div>
@@ -398,7 +424,7 @@ function completeTodayTraining() {
                 :class="isReadOnly ? 'opacity-50 cursor-default active:scale-100' : ''"
                 type="button"
                 :disabled="isReadOnly"
-                @click="ui.toast('当前为演示内容，教学视频暂未接入', 'info')"
+                @click="ui.toast('教学视频暂未接入', 'info')"
               >
                 <Icon name="play_arrow" :size="24" filled />
               </button>
@@ -445,10 +471,9 @@ function completeTodayTraining() {
                 class="px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors"
                 :class="cooldownAllDone ? 'bg-success-container text-on-success-container' : 'bg-primary-fixed text-primary'"
                 type="button"
-                :disabled="cooldownAllDone"
                 @click="completeCooldown"
               >
-                {{ cooldownAllDone ? '已完成' : '一键完成' }}
+                {{ cooldownAllDone ? '取消完成' : '一键完成' }}
               </button>
             </div>
           </div>
@@ -466,7 +491,7 @@ function completeTodayTraining() {
                 :class="isReadOnly ? 'opacity-50 cursor-default active:scale-100' : ''"
                 type="button"
                 :disabled="isReadOnly"
-                @click="ui.toast('当前为演示内容，教学视频暂未接入', 'info')"
+                @click="ui.toast('教学视频暂未接入', 'info')"
               >
                 <Icon name="play_arrow" :size="24" filled />
               </button>
@@ -500,21 +525,18 @@ function completeTodayTraining() {
 
         <!-- 安全提示：训练中止标准（PRD §5.5.2） -->
         <section class="pt-space-xs">
-          <div class="bg-error-container/70 rounded-xl p-3 shadow-sm">
+          <div class="bg-[#FFF3E0] rounded-xl p-3 shadow-sm">
             <div class="flex items-start gap-space-sm">
-              <div class="w-7 h-7 rounded-full bg-error flex-shrink-0 flex items-center justify-center text-on-error shadow-sm mt-0.5">
-                <Icon name="warning" :size="16" />
-              </div>
               <div class="flex-1 min-w-0">
-                <span class="font-label-caps text-label-caps text-on-error-container uppercase tracking-wider">安全第一防线</span>
-                <p class="font-body-sm text-body-sm text-on-error-container mt-0.5 leading-snug">
+                <span class="font-label-caps text-label-caps text-[#8A5200] uppercase tracking-wider">安全第一防线</span>
+                <p class="font-body-sm text-body-sm text-[#8A5200] mt-0.5 leading-snug">
                   若奔跑中出现以下任一信号，请立即转为慢走并终止训练。
                 </p>
                 <ul class="mt-1.5 space-y-1">
                   <li
                     v-for="signal in STOP_SIGNALS"
                     :key="signal"
-                    class="flex items-start gap-1.5 font-body-sm text-body-sm text-on-error-container leading-snug"
+                    class="flex items-start gap-1.5 font-body-sm text-body-sm text-[#8A5200] leading-snug"
                   >
                     <Icon name="stop_circle" :size="13" class="shrink-0 mt-0.5" />
                     <span>{{ signal }}</span>
@@ -533,10 +555,38 @@ function completeTodayTraining() {
           :disabled="completing"
           @click="completeTodayTraining"
         >
-          {{ completing ? '正在生成训练总结…' : '完成当日训练' }}
+          {{ completing ? '正在保存训练状态…' : '完成当日训练' }}
         </AppButton>
       </div>
 
+    </div>
+
+    <div v-if="showIncompleteModal" class="fixed inset-0 z-50 bg-on-surface/45 backdrop-blur-sm flex items-center justify-center p-gutter" @click.self="showIncompleteModal = false">
+      <section class="w-full max-w-sm rounded-2xl bg-surface-container-lowest p-6 shadow-xl text-center">
+        <p class="font-headline-sm text-headline-sm text-on-surface font-bold">还有未完成的训练，确定完成训练吗</p>
+        <div class="mt-6 flex gap-3">
+          <button class="flex-1 min-h-11 rounded-xl bg-surface-container text-on-surface font-semibold" type="button" @click="showIncompleteModal = false">取消</button>
+          <button class="flex-1 min-h-11 rounded-xl bg-primary text-on-primary font-semibold shadow-md" type="button" @click="confirmIncompleteTraining">确认</button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="showCompletionModal" class="fixed inset-0 z-50 bg-on-surface/45 backdrop-blur-sm flex items-center justify-center p-gutter" @click.self="showCompletionModal = false">
+      <section class="relative w-full max-w-sm overflow-hidden rounded-3xl bg-surface-container-lowest shadow-xl">
+        <img :src="planTrackHero" alt="运动背景" class="absolute inset-0 w-full h-full object-cover opacity-20" />
+        <div class="absolute inset-0 bg-gradient-to-b from-white/80 via-white/90 to-[#FFF3E8]/95" />
+        <button aria-label="关闭完成提示" class="absolute right-3 top-3 z-10 w-9 h-9 rounded-full bg-white/80 text-on-surface-variant flex items-center justify-center" type="button" @click.stop="showCompletionModal = false">
+          <Icon name="close" :size="20" />
+        </button>
+        <div class="relative z-10 px-6 py-10 text-center">
+          <div class="w-16 h-16 mx-auto rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg">
+            <Icon name="directions_run" :size="34" />
+          </div>
+          <h2 class="mt-5 font-headline-md text-headline-md text-on-surface font-bold">恭喜你！完成了今日的训练！</h2>
+          <AppButton class="mt-6" variant="primary" icon="rate_review" @click="openFeedback">填写训练反馈</AppButton>
+          <p class="mt-3 text-[11px] text-on-surface-variant">教练会根据你的反馈优化训练计划</p>
+        </div>
+      </section>
     </div>
   </main>
 </template>

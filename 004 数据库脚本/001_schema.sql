@@ -10,7 +10,7 @@ USE ai_running_coach;
 
 CREATE TABLE IF NOT EXISTS app_user (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  phone VARCHAR(20) NOT NULL,
+  phone VARCHAR(255) NOT NULL,
   password_hash VARCHAR(255) NULL,
   nickname VARCHAR(50) NOT NULL DEFAULT '跑者',
   status ENUM('active', 'disabled', 'deleted') NOT NULL DEFAULT 'active',
@@ -299,6 +299,22 @@ CREATE TABLE IF NOT EXISTS ai_summary (
   CONSTRAINT fk_ai_summary_record FOREIGN KEY (record_id) REFERENCES session_record(id) ON DELETE CASCADE,
   CONSTRAINT fk_ai_summary_user FOREIGN KEY (user_id) REFERENCES app_user(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI训练总结';
+
+CREATE TABLE IF NOT EXISTS ai_plan_task (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  profile JSON NOT NULL,
+  status ENUM('queued', 'running', 'succeeded', 'failed') NOT NULL DEFAULT 'queued',
+  progress TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  result JSON NULL,
+  error_message VARCHAR(500) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  finished_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_ai_plan_task_user_created (user_id, created_at),
+  CONSTRAINT fk_ai_plan_task_user FOREIGN KEY (user_id) REFERENCES app_user(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='异步 AI 训练计划生成任务';
 
 CREATE TABLE IF NOT EXISTS adjustment_log (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

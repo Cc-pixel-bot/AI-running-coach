@@ -116,7 +116,7 @@ function editCard(card) {
 async function handleGeneratePlan() {
   if (screening.value.riskLevel === 'medical_confirm') {
     ui.openModal({
-      icon: 'medical_services',
+      icon: 'health_and_safety',
       title: '需要先就医确认',
       body: `${screening.value.summary}\n\n${screening.value.actions.join('\n')}`,
       confirmText: '我知道了',

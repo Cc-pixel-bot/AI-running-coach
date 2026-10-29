@@ -5,17 +5,17 @@ import {
 } from './trainingTemplates10k.js'
 
 /**
- * 训练模板库 —— PRD v1.2 §B1。
+ * 训练模板库 —— 当前版本训练计划模板配置。
  *
  * 立场（PRD 原文）：模板库是官方结构的「统一格式重写」，不是复制。
  * 周期长度与阶段划分直接对齐官方计划，不自造、不压缩：
  *   - World Athletics 5km 官方计划 → 8 周 3 课
  *   - World Athletics 半马官方计划 → 12 周 3 课（Beginner/Intermediate/Advanced 三档）
  *   - B.A.A. 官方马拉松计划 → 20 周四阶段（3 周准备 + 6 周基础 + 9 周专项 + 2 周减量）
- *   - 爱尔兰田径协会 15 周计划 → 强度锚点（RPE + 说话测试）与回撤周机制
+ *   - 爱尔兰田径协会 15 周计划 → RPE 强度锚点与回撤周机制
  *
  * 模板只声明「结构蓝图」（每周阶段、质量课类型、质量课递进、是否回撤/减量），
- * 具体跑量由 planEngine 依据跑者档案与训练量规则计算，避免手写 N×M 条课次。
+ * 这些模板为后端 AI 生成计划提供训练结构参考，具体课次由 AI 结合跑者档案生成。
  */
 
 /** 回撤周 / 减量周的通用参数（PRD §5.1 R1 / R4） */
@@ -42,7 +42,7 @@ export const QUALITY_SESSION_META = {
     purpose: '刺激最大摄氧量，提升速度储备。',
   },
   race: {
-    title: '比赛配速跑',
+    title: '专项节奏跑',
     icon: 'flag',
     structure: '热身 → 目标配速段 → 放松',
     purpose: '建立目标成绩的比赛节奏感（分段配速，避免前快后慢）。',
@@ -100,7 +100,7 @@ const LEGACY_TEMPLATES = {
       { weeks: 3, phase: 'base', phaseName: '适应期', quality: 'tempo', focus: '建立跑走节奏与有氧基础，摸清当前水平' },
       { weeks: 1, phase: 'base', phaseName: '回撤周', quality: 'aerobic', stepBack: true, focus: '训练量回落，让身体吸收前三周负荷' },
       { weeks: 3, phase: 'build', phaseName: '专项提升', quality: 'interval', focus: '引入间歇与渐进跑，提升速度储备' },
-      { weeks: 1, phase: 'peak', phaseName: '赛前减量', quality: 'race', taper: true, focus: '赛前减量 + 5km 测速' },
+      { weeks: 1, phase: 'peak', phaseName: '周期末减量', quality: 'race', taper: true, focus: '周期末减量 + 5km 测速' },
     ]),
   },
 
@@ -121,12 +121,12 @@ const LEGACY_TEMPLATES = {
       },
       {
         file: '03_Athletics_Ireland_Intermediate_Runners.pdf',
-        usedFor: 'RPE / 说话测试强度锚点、Step-back week 机制',
+        usedFor: 'RPE 强度锚点、Step-back week 机制',
         version: '15-week plan, 2025',
       },
       {
         file: '02b_World_Athletics_5K_Training_Programme.pdf',
-        usedFor: '从基础跑、变速/间歇到比赛配速与减量的渐进编排原则',
+        usedFor: '从基础跑、变速/间歇到专项节奏与减量的渐进编排原则',
         version: 'WRRC Copenhagen 26 官方',
       },
       {
@@ -207,7 +207,7 @@ const LEGACY_TEMPLATES = {
         qualityPlan: {
           title: '6 × 400 米轻间歇',
           pattern: '热身 → 6 × 400 米（组间 2 分钟慢跑）→ 放松',
-          description: '减少总量与密度，保留速度刺激，让身体为比赛配速课蓄力。',
+          description: '减少总量与密度，保留速度刺激，让身体为专项节奏课蓄力。',
         },
       },
       {
@@ -215,7 +215,7 @@ const LEGACY_TEMPLATES = {
         phase: 'peak',
         phaseName: '专项提升',
         quality: 'race',
-        focus: '引入比赛配速段，建立目标成绩节奏感',
+        focus: '引入专项节奏段，建立目标成绩节奏感',
         qualityPlan: {
           title: '3 × 2 公里目标配速',
           pattern: '热身 → 3 × 2 公里目标配速（组间慢跑 3 分钟）→ 放松',
@@ -225,7 +225,7 @@ const LEGACY_TEMPLATES = {
       {
         weeks: 1,
         phase: 'taper',
-        phaseName: '赛前减量',
+        phaseName: '周期末减量',
         quality: 'race',
         taper: true,
         focus: '总量下降、强度不减，做 5km 测速',
@@ -240,7 +240,7 @@ const LEGACY_TEMPLATES = {
 
   'T10-6W': {
     id: 'T10-6W',
-    name: '10km 提升 · 赛前 6 周计划',
+    name: '10km 提升 · 周期末 6 周计划',
     targetDistance: '10K',
     durationWeeks: 6,
     runsPerWeek: 3,
@@ -262,8 +262,8 @@ const LEGACY_TEMPLATES = {
     blueprint: buildBlueprint([
       { weeks: 2, phase: 'base', phaseName: '基础期', quality: 'tempo', focus: '巩固有氧基础，规范训练节奏' },
       { weeks: 1, phase: 'build', phaseName: '专项期', quality: 'interval', focus: '加入质量课，提升乳酸阈与速度储备' },
-      { weeks: 2, phase: 'build', phaseName: '专项期', quality: 'race', focus: '比赛配速段 + 长距离耐力' },
-      { weeks: 1, phase: 'taper', phaseName: '赛前减量', quality: 'race', taper: true, focus: '总量指数下降，强度与频次保持不变' },
+      { weeks: 2, phase: 'build', phaseName: '专项期', quality: 'race', focus: '专项节奏段 + 长距离耐力' },
+      { weeks: 1, phase: 'taper', phaseName: '周期末减量', quality: 'race', taper: true, focus: '总量指数下降，强度与频次保持不变' },
     ]),
   },
 
@@ -293,8 +293,8 @@ const LEGACY_TEMPLATES = {
       { weeks: 1, phase: 'base', phaseName: '回撤周', quality: 'aerobic', stepBack: true, focus: '训练量回落，保留质量课与长距离' },
       { weeks: 3, phase: 'build', phaseName: '力量与速度', quality: 'tempo', focus: '加入节奏跑与力量，累积专项负荷' },
       { weeks: 1, phase: 'build', phaseName: '回撤周', quality: 'tempo', stepBack: true, focus: '第二次回撤' },
-      { weeks: 3, phase: 'build', phaseName: '专项与状态提升', quality: 'race', focus: '比赛配速段递增（2×1km → 5km+2km）' },
-      { weeks: 1, phase: 'taper', phaseName: '减量与比赛周', quality: 'race', taper: true, focus: '赛前两周总量指数下降，强度保持' },
+      { weeks: 3, phase: 'build', phaseName: '专项与状态提升', quality: 'race', focus: '专项节奏段递增（2×1km → 5km+2km）' },
+      { weeks: 1, phase: 'taper', phaseName: '目标周减量', quality: 'race', taper: true, focus: '周期末总量指数下降，强度保持' },
     ]),
   },
 
@@ -325,7 +325,7 @@ const LEGACY_TEMPLATES = {
       { weeks: 1, phase: 'base', phaseName: '回撤周', quality: 'tempo', stepBack: true, focus: '训练量回落，保留质量课与长距离' },
       { weeks: 8, phase: 'specific', phaseName: '专项期', quality: 'interval', focus: '马拉松模拟跑与强度专项' },
       { weeks: 1, phase: 'specific', phaseName: '回撤周', quality: 'interval', stepBack: true, focus: '专项期回撤' },
-      { weeks: 2, phase: 'taper', phaseName: '减量期', quality: 'race', taper: true, focus: '赛前 2 周总量指数下降，强度与频次保持不变' },
+      { weeks: 2, phase: 'taper', phaseName: '周期末减量期', quality: 'race', taper: true, focus: '周期末总量指数下降，强度与频次保持不变' },
     ]),
   },
 
@@ -351,7 +351,7 @@ const LEGACY_TEMPLATES = {
       { weeks: 1, phase: 'base', phaseName: '回撤周', quality: 'tempo', stepBack: true, focus: '训练量回落' },
       { weeks: 5, phase: 'specific', phaseName: '专项期', quality: 'interval', focus: '马拉松模拟跑与强度专项' },
       { weeks: 1, phase: 'specific', phaseName: '回撤周', quality: 'interval', stepBack: true, focus: '专项期回撤' },
-      { weeks: 2, phase: 'taper', phaseName: '减量期', quality: 'race', taper: true, focus: '赛前 2 周减量' },
+      { weeks: 2, phase: 'taper', phaseName: '周期末减量期', quality: 'race', taper: true, focus: '周期末减量' },
     ]),
   },
 }

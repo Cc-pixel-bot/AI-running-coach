@@ -44,7 +44,7 @@ async function handleLogin() {
   loading.value = true
   try {
     const user = isRegister.value
-      ? await auth.register(account.value.trim(), password.value, '跑者')
+      ? await auth.register(account.value.trim(), password.value, account.value.trim())
       : await auth.login(account.value.trim(), password.value)
     ui.toast(isRegister.value ? '注册成功' : '登录成功', 'success')
     go(nextRoute())
@@ -75,9 +75,9 @@ function openPrivacy() {
   ui.openModal({
     icon: 'lock',
     title: '隐私保护指引',
-    body: `智程仅在本地演示环境中保存登录状态、跑者档案与训练记录，用于生成和展示个性化训练计划。除非获得你的明确授权，不会将这些信息用于其他用途。
+    body: `智程会使用你的账号信息、跑者档案、训练记录和反馈生成个性化训练计划，并将相关数据保存在服务端。
 
-你可以在“我的”页面退出登录或清除本地数据。`,
+你可以在“我的”页面退出登录，或申请注销账号及删除关联数据。`,
     confirmText: '已阅读并知悉',
   })
 }

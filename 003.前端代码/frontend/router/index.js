@@ -49,12 +49,6 @@ const routes = [
     meta: { title: '课次详情', requiresAuth: true, tab: 'plan' },
   },
   {
-    path: '/plan/adjust',
-    name: 'plan-adjust',
-    component: () => import('../pages/plan/PlanAdjustView.vue'),
-    meta: { title: '计划调整', requiresAuth: true, tab: 'plan' },
-  },
-  {
     path: '/run/prep',
     name: 'run-prep',
     // 今日训练直接复用课次详情，避免维护两套内容结构。
@@ -78,18 +72,6 @@ const routes = [
     name: 'summary',
     component: () => import('../pages/summary/SessionSummaryView.vue'),
     meta: { title: '训练总结', requiresAuth: true, tab: null },
-  },
-  {
-    path: '/history',
-    name: 'history',
-    component: () => import('../pages/history/HistoryView.vue'),
-    meta: { title: '训练记录', requiresAuth: true, tab: 'history' },
-  },
-  {
-    path: '/trends',
-    name: 'trends',
-    component: () => import('../pages/history/TrendsView.vue'),
-    meta: { title: '数据趋势', requiresAuth: true, tab: 'trends' },
   },
   {
     path: '/me',

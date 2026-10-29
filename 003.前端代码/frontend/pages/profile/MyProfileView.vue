@@ -1,22 +1,27 @@
 <script setup>
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth.js'
 import { useProfileStore } from '../../stores/profile.js'
 import { usePlanStore } from '../../stores/plan.js'
-import { useHistoryStore } from '../../stores/history.js'
 import { useUiStore } from '../../stores/ui.js'
-import { clearAll } from '../../services/storage.js'
+import { clearAll, load, save } from '../../services/storage.js'
 import Icon from '../../components/ui/Icon.vue'
 import StatusTag from '../../components/ui/StatusTag.vue'
 import AppButton from '../../components/ui/AppButton.vue'
 import { formatPace } from '../../domain/utils/pace.js'
+import coachAvatar from '../../assets/coach-avatar.png'
 
 const router = useRouter()
 const auth = useAuthStore()
 const profile = useProfileStore()
 const planStore = usePlanStore()
-const history = useHistoryStore()
 const ui = useUiStore()
+const editingNickname = ref(false)
+const editingPersonal = ref(false)
+const nicknameDraft = ref(auth.user?.nickname || auth.user?.phone || '')
+const avatarUrl = ref(load('profileAvatar', null))
+const avatarInput = ref(null)
 
 
 function logout() {
@@ -25,19 +30,43 @@ function logout() {
   router.push('/login')
 }
 
-function clearEverything() {
-  clearAll()
-  ui.toast('已清除全部本地数据（含位置数据与档案）', 'success')
-  router.push('/login')
+async function saveNickname() {
+  const value = nicknameDraft.value.trim()
+  if (!value) return ui.toast('昵称不能为空', 'warn')
+  try {
+    await auth.updateNickname(value)
+    editingNickname.value = false
+    ui.toast('昵称已更新', 'success')
+  } catch (error) {
+    ui.toast(error.message || '昵称保存失败', 'error')
+  }
 }
 
-function resetAll() {
-  profile.reset()
-  planStore.reset()
-  history.reset()
-  auth.logout()
-  ui.toast('已重置本地演示数据', 'success')
-  router.replace('/login')
+function chooseAvatar() {
+  if (!editingPersonal.value) return
+  avatarInput.value?.click()
+}
+
+function changeAvatar(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    avatarUrl.value = String(reader.result)
+    save('profileAvatar', avatarUrl.value)
+    ui.toast('头像已更新', 'success')
+  }
+  reader.readAsDataURL(file)
+}
+
+function togglePersonalEdit() {
+  if (editingPersonal.value) {
+    editingPersonal.value = false
+    editingNickname.value = false
+    return
+  }
+  nicknameDraft.value = auth.user?.nickname || auth.user?.phone || ''
+  editingPersonal.value = true
 }
 
 function requestDeleteAccount() {
@@ -69,17 +98,26 @@ async function deleteAccount() {
       <!-- 用户卡 -->
       <section class="bg-gradient-to-br from-[#FFF3E8] to-[#FFF9F3] rounded-2xl border border-primary-container/20 p-4 shadow-card">
         <div class="flex items-center gap-3">
-          <div class="w-14 h-14 rounded-2xl bg-primary-container/15 flex items-center justify-center shrink-0">
-            <Icon name="smart_toy" :size="28" class="text-primary-container" filled />
-          </div>
+          <button class="w-14 h-14 rounded-2xl bg-primary-container/15 flex items-center justify-center shrink-0 overflow-hidden" :class="!editingPersonal && 'cursor-default'" type="button" aria-label="更换头像" :disabled="!editingPersonal" @click="chooseAvatar">
+            <img :src="avatarUrl || coachAvatar" alt="头像" class="w-full h-full object-cover" />
+          </button>
+          <input ref="avatarInput" class="hidden" type="file" accept="image/*" @change="changeAvatar" />
           <div class="min-w-0">
-            <p class="font-headline-sm text-headline-sm text-on-surface font-bold">{{ auth.user?.nickname || '跑者' }}</p>
-            <p class="font-body-sm text-body-sm text-on-surface-variant">
-              {{ profile.draft.gender === 'male' ? '男' : profile.draft.gender === 'female' ? '女' : '—' }} ·
-              {{ profile.age ?? '—' }}岁 · {{ profile.draft.heightCm ?? '—' }}cm / {{ profile.draft.weightKg ?? '—' }}kg
-            </p>
+            <div v-if="editingPersonal && editingNickname" class="flex items-center gap-1">
+              <input v-model="nicknameDraft" class="field-input py-1 px-2 w-32" maxlength="50" @keyup.enter="saveNickname" />
+              <button class="text-primary text-xs" type="button" @click="saveNickname">保存</button>
+              <button class="text-outline text-xs" type="button" @click="editingNickname = false">完成</button>
+            </div>
+            <button v-else class="font-headline-sm text-headline-sm text-on-surface font-bold text-left" :class="!editingPersonal && 'cursor-default'" type="button" :disabled="!editingPersonal" @click="editingNickname = true">{{ auth.user?.nickname || auth.user?.phone || '跑者' }}</button>
+            <p class="font-body-sm text-body-sm text-on-surface-variant">{{ profile.draft.gender === 'male' ? '男' : profile.draft.gender === 'female' ? '女' : '未填写' }} · 账号：{{ auth.user?.phone || '—' }}</p>
           </div>
+          <button class="ml-auto w-10 h-10 rounded-full bg-white/70 text-primary flex items-center justify-center shrink-0" :aria-label="editingPersonal ? '完成编辑个人信息' : '编辑个人信息'" type="button" @click="togglePersonalEdit">
+            <Icon :name="editingPersonal ? 'check' : 'edit'" :size="20" />
+          </button>
         </div>
+        <p class="mt-2 text-[11px] text-on-surface-variant">
+          {{ editingPersonal ? '点击头像更换照片，点击昵称修改名称' : '点击右侧编辑按钮修改个人信息' }}
+        </p>
       </section>
 
       <!-- 当前计划 -->
@@ -114,61 +152,6 @@ async function deleteAccount() {
         <p v-else class="text-body-sm text-on-surface-variant">尚未生成训练计划。</p>
         <div class="flex gap-2 pt-3">
           <AppButton variant="secondary" size="sm" @click="router.push('/plan')">查看计划</AppButton>
-          <AppButton variant="secondary" size="sm" @click="router.push('/plan/adjust')">调整记录</AppButton>
-        </div>
-      </section>
-
-      <!-- 演示设置 -->
-      <section class="bg-surface-container-lowest rounded-xl p-space-md shadow-card">
-        <h2 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-1.5 mb-2">
-          <span class="w-1.5 h-4 bg-secondary-container rounded-full" />演示设置
-        </h2>
-
-        <label class="flex items-center justify-between py-2 border-b border-surface-container">
-          <div>
-            <p class="font-body-md text-body-md text-on-surface">演示模式</p>
-            <p class="font-body-sm text-body-sm text-on-surface-variant">固定智能输出，保证演示结果可复现</p>
-          </div>
-          <input
-            type="checkbox"
-            class="w-5 h-5 accent-primary-container"
-            :checked="auth.demoMode"
-            @change="auth.setDemoMode($event.target.checked)"
-          />
-        </label>
-
-        <div class="py-2 border-b border-surface-container">
-          <p class="font-body-md text-body-md text-on-surface">演示档案</p>
-          <p class="font-body-sm text-body-sm text-on-surface-variant">切换预置档案，应对现场问询</p>
-          <div class="flex flex-col gap-1.5 pt-2">
-            <button
-              v-for="p in auth.demoProfiles"
-              :key="p.key"
-              class="text-left px-2.5 py-2 rounded-lg text-body-sm transition-colors"
-              :class="auth.demoProfileKey === p.key ? 'bg-primary-fixed text-primary font-semibold' : 'bg-surface-container-low text-on-surface'"
-              type="button"
-              @click="auth.setDemoProfile(p.key)"
-            >
-              {{ p.name }}
-            </button>
-          </div>
-        </div>
-
-        <div class="flex gap-2 mt-3">
-          <button
-            class="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-headline-sm text-[14px] active:scale-[0.99] transition-transform"
-            type="button"
-            @click="resetAll"
-          >
-            重置演示数据
-          </button>
-          <button
-            class="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-headline-sm text-[14px] active:scale-[0.99] transition-transform"
-            type="button"
-            @click="clearEverything"
-          >
-            清除全部本地数据
-          </button>
         </div>
       </section>
 
@@ -179,12 +162,12 @@ async function deleteAccount() {
         </h2>
         <div class="space-y-1.5 text-body-sm text-body-sm text-on-surface-variant leading-relaxed">
           <p class="flex items-start gap-1.5">
-            <Icon name="my_location" :size="14" class="text-outline mt-0.5 shrink-0" />
-            位置数据只用于本次训练，默认保存 30 天，可在训练页面清除。
+            <span class="text-outline shrink-0">定位数据</span>
+            <span>仅用于记录本次训练轨迹，并随训练记录保存。</span>
           </p>
           <p class="flex items-start gap-1.5">
-            <Icon name="medical_services" :size="14" class="text-outline mt-0.5 shrink-0" />
-            本产品仅提供运动训练信息，不构成医疗诊断、用药或康复治疗建议。
+            <span class="text-outline shrink-0">训练安全</span>
+            <span>用于帮助智程评估训练安排，不替代专业医疗建议。</span>
           </p>
         </div>
       </section>

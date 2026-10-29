@@ -1,20 +1,26 @@
 import { defineStore } from 'pinia'
-import { computeAdjustments } from '../domain/engine/adjustEngine.js'
 import { load, save } from '../services/storage.js'
-import { DEMO_ADJUSTMENT_LOGS } from '../data/demoSeed.js'
-import { confirmPlanApi, generateAiPlanApi } from '../services/authApi.js'
+import { confirmPlanApi, currentPlanApi, generateAiPlanApi, createAiPlanTaskApi, getAiPlanTaskApi, decideAiAdjustmentApi } from '../services/authApi.js'
 
 function normalizePlanCopy(plan) {
   if (!plan) return plan
   ;(plan.weeks || []).forEach((week) => {
     ;(week.sessions || []).forEach((session) => {
-      session.title = String(session.title || '').replace(/\s*[（(]保守版[）)]/g, '')
+      session.title = String(session.title || '')
+        .replace(/\s*[（(]保守版[）)]/g, '')
+        .replace(/比赛配速/g, '专项节奏')
       if (session.description === '全程轻松，保持能交谈。超过计划距离不停是本周唯一任务。') {
         session.description = '全程保持轻松和呼吸稳定。按计划距离持续完成，是本周的主要任务。'
       }
       if (session.description === '全程能正常说话的强度。目标是积累有氧基础，不是训练。') {
         session.description = '全程保持呼吸从容、动作放松。目标是积累有氧基础，不追求速度。'
       }
+      session.description = String(session.description || '')
+        .replace(/能够?自如交谈|能持续对话|能正常说话|能说完整句但不能唱歌|能对话/g, '保持呼吸稳定、动作放松')
+        .replace(/能说短句|只能说短句|只能蹦词/g, '保持受控用力')
+      session.adaptationNote = String(session.adaptationNote || '')
+        .replace(/请严格\s*/g, '')
+        .replace(/务必\s*/g, '')
       if (session.mainRun) {
         session.mainRun = {
           ...session.mainRun,
@@ -77,11 +83,32 @@ function normalizeAdaptationSummary(summary) {
   return [{ icon: 'psychology', title: '个性化安排', text: '根据跑者档案、目标成绩和训练模板生成本计划。' }]
 }
 
+function buildZoneDistribution(weeks) {
+  const totals = new Map()
+  let total = 0
+  ;(weeks || []).forEach((week) => {
+    ;(week.sessions || []).forEach((session) => {
+      const level = ['interval', 'tempo', 'race'].includes(session.type)
+        ? session.type
+        : session.type === 'strength' ? 'strength' : 'easy'
+      const amount = Number(session.distanceKm || session.durationMin || 0)
+      totals.set(level, (totals.get(level) || 0) + amount)
+      total += amount
+    })
+  })
+  if (!total) return [{ level: 'easy', name: '基础', ratio: 1 }]
+  return [...totals.entries()].map(([level, amount]) => ({
+    level,
+    name: level === 'easy' ? '基础' : level === 'strength' ? '力量' : level === 'race' ? '专项' : '质量',
+    ratio: amount / total,
+  }))
+}
+
 function normalizeAiPlan(plan, profile) {
   const easyPace = Number(profile.easyPace || 420)
   const goalPace = Number(profile.targetPace || easyPace)
 
-  return normalizePlanCopy({
+  const normalized = normalizePlanCopy({
     ...plan,
     goalPace,
     goalTotalSec: Number(plan.goalTotalSec || profile.targetTotalSec || 0),
@@ -113,7 +140,19 @@ function normalizeAiPlan(plan, profile) {
           distanceKm: Number(session.distanceKm || 0),
           durationMin: Number(session.durationMin || 0),
           intensity: typeof session.intensity === 'object'
-            ? session.intensity
+            ? {
+                ...session.intensity,
+                paceLow: Number(session.intensity.paceLow || paceLow),
+                paceHigh: Number(session.intensity.paceHigh || paceHigh),
+                rpe: Array.isArray(session.intensity.rpe)
+                  && session.intensity.rpe.length >= 2
+                  && Number(session.intensity.rpe[0]) > 0
+                  && Number(session.intensity.rpe[1]) >= Number(session.intensity.rpe[0])
+                  ? [Math.max(1, Number(session.intensity.rpe[0])), Math.max(1, Number(session.intensity.rpe[1]))]
+                  : (session.type === 'interval' ? [6, 8] : session.type === 'tempo' || session.type === 'race' ? [5, 7] : [2, 4]),
+                effort: session.intensity.effort || session.intensity.level || (isEasyEffort ? '轻松' : '受控'),
+                hrZone: session.intensity.hrZone || '—',
+              }
             : {
                 level: session.intensity || '轻松',
                 paceLow,
@@ -154,6 +193,10 @@ function normalizeAiPlan(plan, profile) {
       }),
     })),
   })
+  if (!Array.isArray(normalized.zoneDistribution) || !normalized.zoneDistribution.length) {
+    normalized.zoneDistribution = buildZoneDistribution(normalized.weeks)
+  }
+  return normalized
 }
 
 /** 训练计划（生成 → 确认 → 执行中 → 调整） */
@@ -164,10 +207,14 @@ export const usePlanStore = defineStore('plan', {
     /** 待确认的调整集合 */
     pendingAdjustments: [],
     pendingSafetyNotice: null,
+    /** 本次 AI 判断的范围、复核点和触发原因 */
+    pendingAdjustmentMeta: null,
     /** AI 调整产出的新计划（用户采纳后写回） */
     pendingPlan: null,
+    remoteAdjustmentId: null,
+    latestAdjustmentSummary: load('latestAdjustmentSummary', null),
     /** 调整留痕 */
-    adjustmentLogs: load('adjustmentLogs', DEMO_ADJUSTMENT_LOGS),
+    adjustmentLogs: load('adjustmentLogs', []),
     /** 用户是否已确认计划 */
     confirmed: load('planConfirmed', false),
   }),
@@ -195,6 +242,23 @@ export const usePlanStore = defineStore('plan', {
   },
 
   actions: {
+    async hydrateFromServer(token, profile = {}) {
+      if (!token || import.meta.env?.MODE === 'test') return this.plan
+      const result = await currentPlanApi(token)
+      if (!result.plan) {
+        this.plan = null
+        this.confirmed = false
+        save('plan', null)
+        save('planConfirmed', false)
+        return null
+      }
+      this.plan = normalizeAiPlan(result.plan, profile)
+      this.confirmed = result.plan.status === 'active'
+      save('plan', this.plan)
+      save('planConfirmed', this.confirmed)
+      return this.plan
+    },
+
     async generate(profile, options = {}) {
       this.generating = true
       const token = load('authToken', null)
@@ -203,7 +267,28 @@ export const usePlanStore = defineStore('plan', {
         throw new Error('登录已失效，请重新登录')
       }
       try {
-        const result = await generateAiPlanApi(token, { ...profile, ...options })
+        const requestProfile = { ...profile, ...options }
+        let result
+        if (import.meta.env?.MODE === 'test') {
+          result = await generateAiPlanApi(token, requestProfile)
+        } else {
+          const task = await createAiPlanTaskApi(token, requestProfile)
+          if (task.status === 'goal_adjustment_recommended' || task.status === 'blocked') {
+            result = task
+          } else {
+            const deadline = Date.now() + 180000
+            while (Date.now() < deadline) {
+              const status = await getAiPlanTaskApi(token, task.taskId)
+              if (status.status === 'succeeded') {
+                result = status.result
+                break
+              }
+              if (status.status === 'failed') throw new Error(status.error || 'AI 计划生成失败，请稍后重试')
+              await new Promise((resolve) => window.setTimeout(resolve, 800))
+            }
+            if (!result) throw new Error('AI 计划生成超时，请稍后重试')
+          }
+        }
         if (result.status === 'goal_adjustment_recommended') {
           this.generating = false
           return { goalRecommendation: result.goalRecommendation }
@@ -217,8 +302,10 @@ export const usePlanStore = defineStore('plan', {
         const normalized = normalizeAiPlan(result.plan, profile)
         this.plan = normalized
         this.confirmed = false
+        this.latestAdjustmentSummary = null
         save('plan', normalized)
         save('planConfirmed', false)
+        save('latestAdjustmentSummary', null)
         this.generating = false
         return normalized
       } catch (error) {
@@ -247,33 +334,18 @@ export const usePlanStore = defineStore('plan', {
           if (s.id === sessionId) s.status = status
         }),
       )
-      const current = this.plan.weeks.find((w) => w.week === this.plan.currentWeek)
-      if (current && current.sessions.every((s) => s.status !== 'pending')) {
-        this.plan.currentWeek = Math.min(this.plan.currentWeek + 1, this.plan.totalWeeks)
-      }
+      advanceCurrentWeek(this.plan)
       save('plan', this.plan)
     },
 
-    /** 计算调整集合（写入闭环） */
-    computeAdjust({ record, feedback, recentRecords, longest30dKm, daysToRace, weeksSinceBreak = 0 }) {
-      const result = computeAdjustments({
-        plan: this.plan,
-        record,
-        feedback,
-        recentRecords,
-        longest30dKm,
-        daysToRace,
-        weeksSinceBreak,
-      })
-      this.pendingAdjustments = result.adjustments
-      this.pendingSafetyNotice = result.safetyNotice
-      this.pendingPlan = result.plan
-      return result
-    },
-
     /** 用户决策：采纳 / 保持原计划 */
-    decideAdjustments(decision) {
+    async decideAdjustments(decision) {
       if (!this.plan) return
+      const token = load('authToken', null)
+      const remoteId = this.remoteAdjustmentId
+      if (token && remoteId) {
+        await decideAiAdjustmentApi(token, remoteId, decision)
+      }
       const items = this.pendingAdjustments.map((a) => ({
         label: a.target.label,
         beforeText: describeBefore(a),
@@ -294,22 +366,35 @@ export const usePlanStore = defineStore('plan', {
       ]
       save('adjustmentLogs', this.adjustmentLogs)
 
-      // 采纳时把规则引擎算出的新计划写回 —— 闭环的「计划真的变了」
+      // 采纳时把通过校验的 AI 调整写回 —— 闭环的「计划真的变了」
       if (decision === 'accepted' && this.pendingPlan) {
+        const completedIds = new Set(this.plan.weeks.flatMap((week) => week.sessions).filter((session) => session.status === 'done').map((session) => session.id))
+        advanceCurrentWeek(this.pendingPlan)
         this.plan = normalizePlanCopy(this.pendingPlan)
+        this.plan.weeks.forEach((week) => week.sessions.forEach((session) => {
+          if (completedIds.has(session.id)) session.status = 'done'
+        }))
+        advanceCurrentWeek(this.plan)
         save('plan', this.plan)
       }
       this.pendingAdjustments = []
       this.pendingSafetyNotice = null
+      this.pendingAdjustmentMeta = null
       this.pendingPlan = null
+      this.remoteAdjustmentId = null
     },
 
     reset() {
       this.plan = null
       this.confirmed = false
+      this.latestAdjustmentSummary = null
+      this.pendingPlan = null
+      this.remoteAdjustmentId = null
       this.pendingAdjustments = []
+      this.pendingAdjustmentMeta = null
       save('plan', null)
       save('planConfirmed', false)
+      save('latestAdjustmentSummary', null)
     },
   },
 })
@@ -332,4 +417,15 @@ function fmt(pace) {
   const m = Math.floor(pace[0] / 60)
   const s = Math.round(pace[0] % 60)
   return `${m}'${String(s).padStart(2, '0')}"`
+}
+
+function advanceCurrentWeek(plan) {
+  if (!plan?.weeks?.length) return
+  let currentWeek = Number(plan.currentWeek || 1)
+  while (currentWeek < Number(plan.totalWeeks || plan.weeks.length)) {
+    const current = plan.weeks.find((week) => Number(week.week) === currentWeek)
+    if (!current || current.sessions.some((session) => session.status === 'pending')) break
+    currentWeek += 1
+  }
+  plan.currentWeek = currentWeek
 }

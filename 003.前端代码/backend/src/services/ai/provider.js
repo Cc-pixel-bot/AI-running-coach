@@ -5,7 +5,7 @@ function parseJson(text) {
   return JSON.parse(normalized)
 }
 
-async function callCompatibleModel({ system, user }) {
+async function callCompatibleModel({ system, user, maxTokens = 4500, timeoutMs = config.ai.timeoutMs }) {
   if (!config.ai.baseUrl || !config.ai.apiKey || !config.ai.model) {
     const error = new Error('AI 服务尚未配置')
     error.code = 'AI_NOT_CONFIGURED'
@@ -13,7 +13,7 @@ async function callCompatibleModel({ system, user }) {
   }
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), config.ai.timeoutMs)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   const enableThinking = config.ai.reasoningEffort !== 'none'
   try {
     const response = await fetch(`${config.ai.baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -27,7 +27,8 @@ async function callCompatibleModel({ system, user }) {
         temperature: 0.2,
         enable_thinking: enableThinking,
         ...(enableThinking ? { reasoning_effort: config.ai.reasoningEffort } : {}),
-        max_tokens: 12000,
+        // 计划字段已经压缩为后端必需字段，避免 8 周计划响应过大导致前端长时间停在加载页。
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: system },
@@ -60,7 +61,7 @@ async function callCompatibleModel({ system, user }) {
     }
   } catch (error) {
     if (error.name === 'AbortError' || error.code === 20) {
-      const timeoutError = new Error('AI 计划生成超时')
+      const timeoutError = new Error('AI 请求超时')
       timeoutError.code = 'AI_TIMEOUT'
       throw timeoutError
     }
@@ -79,7 +80,19 @@ async function callCompatibleModel({ system, user }) {
   }
 }
 
-export async function generateWithProvider({ system, user, fallback }) {
+export async function generateWithProvider({ system, user, fallback, maxTokens = 4500, timeoutMs = config.ai.timeoutMs }) {
   if (config.ai.provider === 'mock') return fallback()
-  return callCompatibleModel({ system, user })
+  try {
+    return await callCompatibleModel({ system, user, maxTokens, timeoutMs })
+  } catch (error) {
+    // 模型偶尔会在长 JSON 末尾多输出 Markdown 标记；仅针对解析错误重试一次，
+    // 不对安全校验失败做兜底，避免把非结构化内容写入计划。
+    if (error.code !== 'AI_OUTPUT_PARSE') throw error
+    return callCompatibleModel({
+      system: `${system}\n必须只输出可被 JSON.parse 解析的 JSON，不要代码围栏。`,
+      user,
+      maxTokens,
+      timeoutMs,
+    })
+  }
 }

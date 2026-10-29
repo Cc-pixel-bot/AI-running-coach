@@ -8,9 +8,7 @@
  * 用法：
  *   npm run sync:prototypes      # 构建 + 同步
  *
- * 只维护 7 个页面（登录 / AI 建档 / 档案确认 / 计划总览 /
- * 今日训练 / GPS 训练执行 / 我的），其余实现页面不在原型目录中单独出图，
- * 可在应用内通过导航到达。
+ * 维护当前产品的 10 个页面入口，均映射到真实前端路由。
  */
 import { readFile, writeFile, rm, cp, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -23,7 +21,7 @@ const frontendDir = resolve(here, '..')
 const distDir = resolve(frontendDir, 'dist')
 const targetDir = resolve(frontendDir, '../../002.产品UI原型/1比1原型图')
 
-/** 原型目录维护的 7 个页面 */
+/** 原型目录维护的 10 个页面 */
 const ROUTES = [
   { file: '01-登录页.html', hash: '#/login', title: '登录' },
   { file: '02-AI建档页.html', hash: '#/profile', title: 'AI 建档' },
@@ -32,6 +30,13 @@ const ROUTES = [
   { file: '05-今日训练页.html', hash: '#/run/prep', title: '今日训练' },
   { file: '06-GPS训练执行页.html', hash: '#/run/live', title: 'GPS 训练执行' },
   { file: '07-我的页.html', hash: '#/me', title: '我的' },
+  { file: '08-当日训练总结页.html', hash: '#/summary', title: '当日训练总结' },
+  { file: '09-训练反馈页.html', hash: '#/feedback', title: '训练反馈' },
+  { file: '10-ai训练计划确认页.html', hash: '#/profile/plan-confirm', title: 'AI 训练计划确认' },
+]
+
+const REMOVED_ENTRIES = [
+  '09- 训练计划调整页.html',
 ]
 
 async function main() {
@@ -56,7 +61,11 @@ async function main() {
   await mkdir(targetDir, { recursive: true })
   await cp(resolve(distDir, 'assets'), assetsTarget, { recursive: true })
 
-  console.log('▶ 生成 7 个原型入口页…')
+  for (const file of REMOVED_ENTRIES) {
+    await rm(resolve(targetDir, file), { force: true })
+  }
+
+  console.log('▶ 生成 10 个原型入口页…')
   for (const route of ROUTES) {
     const html = template.replace(
       '</body>',

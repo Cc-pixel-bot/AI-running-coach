@@ -26,6 +26,7 @@ const SECTIONS = [
   { key: 'screening', label: '风险筛查', icon: 'shield' },
 ]
 const activeSection = ref('basis')
+const noDiscomfortSelected = ref(false)
 
 const WEEKLY_KM_OPTIONS = [10, 15, 20, 25, 30, 40, 50]
 const EASY_PACE_OPTIONS = [300, 330, 360, 390, 420, 450]
@@ -69,8 +70,8 @@ onMounted(async () => {
   ui.clearToasts()
   try {
     await profile.loadFromServer(auth.token)
-  } catch (error) {
-    ui.toast(error.message || '档案加载失败，请稍后重试', 'error')
+  } catch {
+    // 首次进入建档页允许没有档案，读取失败不展示登录服务误报；提交时再反馈保存结果。
   }
   const current = Array.isArray(d.value.terrain) ? d.value.terrain : d.value.terrain ? [d.value.terrain] : []
   const normalized = current
@@ -124,11 +125,17 @@ function selectTarget(typeKey) {
 
 function toggleInjury(part) {
   ui.clearToasts()
+  noDiscomfortSelected.value = false
   const list = d.value.injuries || []
   const exists = list.some((i) => i.part === part)
   profile.patch({
     injuries: exists ? list.filter((i) => i.part !== part) : [...list, { part, active: true }],
   })
+}
+
+function clearInjuries() {
+  noDiscomfortSelected.value = true
+  profile.patch({ injuries: [] })
 }
 
 function toggleTerrain(terrain) {
@@ -168,13 +175,6 @@ function scrollToSection(key) {
   activeSection.value = key
   const el = document.getElementById(`section-${key}`)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-function loadDemoProfile() {
-  // 演示样本只随机生成跑者档案，不携带预设计划；清掉当前计划避免串用旧数据。
-  plan.reset()
-  profile.loadRandomDemo()
-  ui.toast('已随机载入一组演示档案，点击生成后由智程重新制定计划', 'success')
 }
 
 function missingProfileField() {
@@ -614,9 +614,9 @@ async function handleGenerate() {
             </button>
             <button
               class="option-btn col-span-2"
-              :class="!(d.injuries || []).length && 'option-btn-active'"
+              :class="noDiscomfortSelected && !(d.injuries || []).length && 'option-btn-active'"
               type="button"
-              @click="profile.patch({ injuries: [] })"
+              @click="clearInjuries"
             >
               无任何不适
             </button>
@@ -688,9 +688,6 @@ async function handleGenerate() {
           <Icon name="verified_user" :size="14" class="text-emerald-600" />
           <span class="text-[11px]">科学模型运算保障 · 数据经由本地与智程智能系统加密协同</span>
         </div>
-        <button class="w-full text-[11px] text-primary hover:underline font-medium" type="button" @click="loadDemoProfile">
-          直达已建档案卡（载入演示档案）>
-        </button>
       </div>
     </div>
   </main>

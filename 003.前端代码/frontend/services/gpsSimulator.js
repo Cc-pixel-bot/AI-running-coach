@@ -1,5 +1,5 @@
 /**
- * GPS 训练模拟器 —— 复刻 PRD v1.2 §C2 的记录逻辑，用于 Demo 阶段在室内稳定复现。
+ * GPS 训练模拟器 —— 仅供自动化测试使用，不参与正式训练流程。
  *
  * 模拟了以下真实链路中的关键行为：
  *  - 1 Hz 采样（时间戳 + 位置 + 速度）
@@ -17,7 +17,7 @@ const MAX_SPEED_MPS = 12 // 漂移过滤阈值（PRD §C2）
 const AUTO_PAUSE_SEC = 15 // 连续无位移自动暂停
 const AUTO_RESUME_SEC = 5
 
-/** 线性同余伪随机，保证演示可复现 */
+/** 仅用于无定位权限时的开发测试，不参与正式训练数据提交。 */
 function createRandom(seed = 20261026) {
   let s = seed % 2147483647
   if (s <= 0) s += 2147483646
@@ -103,10 +103,6 @@ export class GpsSimulator {
   }
 
   /** 记录一个分段 */
-  markLap() {
-    this.laps.push({ index: this.laps.length + 1, distanceKm: this.distanceKm, elapsedSec: this.elapsedSec })
-  }
-
   /**
    * 推进 dt 秒（模拟时间）。
    * @returns {object} 本次 tick 的事件

@@ -5,7 +5,7 @@
  */
 
 const MAX_SPEED_MPS = 12
-const MAX_ACCURACY_METERS = 30
+const MAX_ACCURACY_METERS = 80
 const AUTO_PAUSE_SEC = 15
 
 function distanceMeters(a, b) {
@@ -152,10 +152,6 @@ export class GpsService {
   toggle() {
     if (this.status === 'running') this.pause()
     else if (this.status === 'paused') this.resume()
-  }
-
-  markLap() {
-    this.laps.push({ index: this.laps.length + 1, distanceKm: this.distanceKm, elapsedSec: this.elapsedSec })
   }
 
   _handlePosition(position) {

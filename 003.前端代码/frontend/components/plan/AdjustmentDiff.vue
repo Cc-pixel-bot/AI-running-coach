@@ -1,6 +1,14 @@
 <script setup>
 import Icon from '../ui/Icon.vue'
-import { REASON_CODES } from '../../domain/engine/adjustEngine.js'
+
+const reasonLabels = {
+  PAIN_RECOVERY: '疼痛反馈',
+  PAIN_RECOVERY: '疼痛恢复',
+  FATIGUE_REDUCE: '疲劳反馈',
+  INCOMPLETE_RECOVERY: '完成度反馈',
+  LOAD_CONTROL: '负荷控制',
+  SCHEDULE_ADAPT: '训练安排',
+}
 
 /** 变更 diff（PRD §E3） */
 defineProps({
@@ -20,13 +28,10 @@ defineProps({
         <span
           class="px-2 py-0.5 rounded-full font-label-caps text-label-caps shrink-0"
           :class="{
-            'bg-error-container text-on-error-container': REASON_CODES[item.reasonCode]?.tone === 'danger',
-            'bg-primary-fixed text-primary': REASON_CODES[item.reasonCode]?.tone === 'warn',
-            'bg-success-container text-on-success-container': REASON_CODES[item.reasonCode]?.tone === 'good',
-            'bg-surface-container text-on-surface-variant': REASON_CODES[item.reasonCode]?.tone === 'info',
+            'bg-primary-fixed text-primary': Boolean(item.reasonCode),
           }"
         >
-          {{ REASON_CODES[item.reasonCode]?.label || item.reasonCode }}
+          {{ reasonLabels[item.reasonCode] || 'AI 调整建议' }}
         </span>
       </div>
       <div class="p-3 space-y-2">

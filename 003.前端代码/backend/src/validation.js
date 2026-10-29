@@ -1,7 +1,7 @@
 export function validateCredentials({ phone, password }) {
   const account = String(phone ?? '').trim()
   const secret = String(password ?? '')
-  if (!/^\d{3,20}$/.test(account)) return '请输入正确的账号'
+  if (!account) return '请输入账号'
   if (secret.length < 6 || secret.length > 64) return '请输入6-64位密码'
   return null
 }

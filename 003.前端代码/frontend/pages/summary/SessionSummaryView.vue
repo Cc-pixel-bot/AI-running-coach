@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRunStore } from '../../stores/run.js'
 import { usePlanStore } from '../../stores/plan.js'
@@ -10,7 +10,6 @@ import StatusTag from '../../components/ui/StatusTag.vue'
 import AppButton from '../../components/ui/AppButton.vue'
 import AdjustmentDiff from '../../components/plan/AdjustmentDiff.vue'
 import { formatDuration, formatPace } from '../../domain/utils/pace.js'
-import { completionLabel } from '../../domain/engine/adjustEngine.js'
 
 const router = useRouter()
 const run = useRunStore()
@@ -22,15 +21,13 @@ const feedback = computed(() => run.feedback || {})
 const summary = computed(() => run.summary)
 const adjustments = computed(() => run.lastAdjustments || [])
 const safetyNotice = computed(() => run.safetyNotice)
-const analyzing = ref(true)
-const needsPlanAdjustment = computed(() => Boolean(safetyNotice.value) || adjustments.value.length > 0)
-const adjustmentReason = computed(() => safetyNotice.value?.text || adjustments.value[0]?.reasonText || '本次训练反馈触发了负荷调整规则。')
-
-onMounted(() => {
-  window.setTimeout(() => {
-    analyzing.value = false
-  }, 500)
-})
+const adjustmentMeta = computed(() => planStore.pendingAdjustmentMeta || {})
+const needsPlanAdjustment = computed(() => Boolean(safetyNotice.value) || adjustments.value.length > 0 || adjustmentMeta.value.decision === 'need_more_info')
+function formatSessionRefs(text) {
+  return String(text || '').replace(/\bw(\d+)s(\d+)\b/gi, '第$1周第$2节')
+}
+const adjustmentReason = computed(() => formatSessionRefs(safetyNotice.value?.text || adjustments.value[0]?.reasonText || '本次训练反馈需要进一步评估。'))
+const showAdjustmentDiff = ref(false)
 
 const planned = computed(() => run.session?.distanceKm || 0)
 const achievement = computed(() =>
@@ -46,22 +43,22 @@ const SECTION_STYLE = {
 
 const diffItems = computed(() =>
   adjustments.value.map((a) => ({
-    label: a.target.label,
+    label: a.target.label || '后续训练',
     beforeText: a.type === 'MODIFY_WEEK' ? `${a.before.targetKm}公里/周` : `${a.before?.distanceKm ?? 0}公里`,
     afterText: a.type === 'MODIFY_WEEK' ? `${a.after.targetKm}公里/周` : `${a.after?.distanceKm ?? 0}公里`,
-    reasonText: a.reasonText,
+    reasonText: formatSessionRefs(a.reasonText),
     reasonCode: a.reasonCode,
   })),
 )
 
-function acceptAdjustments() {
-  planStore.decideAdjustments('accepted')
+async function acceptAdjustments() {
+  await planStore.decideAdjustments('accepted')
   ui.toast('调整已采纳，计划已同步', 'success')
   router.push('/plan')
 }
 
-function keepPlan() {
-  planStore.decideAdjustments('rejected')
+async function keepPlan() {
+  await planStore.decideAdjustments('rejected')
   ui.toast('已保持原计划，本次决策已留痕', 'info')
   router.push('/plan')
 }
@@ -72,15 +69,7 @@ function keepPlan() {
     <AppHeader title="今日训练总结" subtitle="AI训练复盘" back />
 
     <div class="pt-14 pb-10 px-gutter space-y-space-md">
-      <section v-if="analyzing" class="bg-surface-container-lowest rounded-2xl p-8 shadow-card text-center">
-        <div class="w-12 h-12 mx-auto rounded-full bg-primary-fixed flex items-center justify-center text-primary animate-pulse">
-          <Icon name="auto_awesome" :size="24" filled />
-        </div>
-        <h2 class="font-headline-sm text-headline-sm text-on-surface mt-3">智程正在分析本次训练</h2>
-        <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">正在整理训练数据和身体反馈…</p>
-      </section>
-
-      <template v-else-if="summary">
+      <template v-if="summary">
         <section class="bg-surface-container-lowest rounded-2xl p-4 shadow-card flex items-center justify-between">
           <div class="flex items-center gap-3 min-w-0">
             <div class="w-11 h-11 rounded-full bg-success-container flex items-center justify-center text-on-success-container shrink-0">
@@ -142,9 +131,15 @@ function keepPlan() {
         </section>
 
         <section v-if="needsPlanAdjustment" class="bg-primary-fixed/70 rounded-2xl p-4 border border-primary-container/20">
-          <h2 class="font-headline-sm text-headline-sm text-on-surface">需要调整训练计划</h2>
+          <h2 class="font-headline-sm text-headline-sm text-on-surface">{{ adjustmentMeta.decision === 'need_more_info' ? '需要继续观察' : '需要调整训练计划' }}</h2>
           <p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">{{ adjustmentReason }}</p>
-          <AppButton class="mt-3" variant="primary" icon="tune" @click="router.push('/plan/adjust')">查看计划调整</AppButton>
+          <p v-if="adjustmentMeta.adjustmentEpisode?.holdCondition" class="font-body-sm text-on-surface-variant mt-2 leading-relaxed">观察重点：{{ adjustmentMeta.adjustmentEpisode.holdCondition }}</p>
+          <AppButton v-if="adjustments.length && !showAdjustmentDiff" class="mt-3" variant="primary" icon="tune" @click="showAdjustmentDiff = true">查看计划调整</AppButton>
+          <div v-if="adjustments.length && showAdjustmentDiff" class="mt-4 space-y-3">
+            <AdjustmentDiff :items="diffItems" />
+            <AppButton class="w-full" variant="primary" icon="check" @click="acceptAdjustments">采纳调整</AppButton>
+          </div>
+          <AppButton v-if="!adjustments.length" class="mt-3" variant="secondary" @click="router.push('/plan')">继续执行当前计划</AppButton>
         </section>
 
         <section v-else class="bg-success-container/70 rounded-2xl p-4">
@@ -152,7 +147,7 @@ function keepPlan() {
             <Icon name="check_circle" :size="20" />
             <h2 class="font-headline-sm text-headline-sm">按原计划继续</h2>
           </div>
-          <p class="font-body-sm text-body-sm text-on-success-container mt-1">本次训练没有触发调整规则，下一次训练继续按计划执行。</p>
+          <p class="font-body-sm text-body-sm text-on-success-container mt-1">本次训练状态稳定，下一次训练继续按原计划执行。</p>
           <AppButton class="mt-3" variant="secondary" @click="router.push('/plan')">按原计划继续</AppButton>
         </section>
 

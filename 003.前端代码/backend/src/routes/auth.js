@@ -77,4 +77,16 @@ router.get('/me', async (req, res, next) => {
   }
 })
 
+router.patch('/me', requireAuth, async (req, res, next) => {
+  try {
+    const nickname = String(req.body?.nickname || '').trim()
+    if (!nickname || nickname.length > 50) return res.status(400).json({ message: '昵称不能为空且不超过50个字' })
+    await pool.execute('UPDATE app_user SET nickname = ? WHERE id = ?', [nickname, req.auth.sub])
+    const [rows] = await pool.execute('SELECT id, phone, nickname, status FROM app_user WHERE id = ? LIMIT 1', [req.auth.sub])
+    return res.json({ user: publicUser(rows[0]) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
 export default router

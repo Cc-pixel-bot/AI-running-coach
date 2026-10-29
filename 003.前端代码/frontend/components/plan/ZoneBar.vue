@@ -4,7 +4,7 @@ import { INTENSITY } from '../../domain/constants/intensity.js'
 
 /** 强度分布堆叠条（PRD §B3 第 4 项） */
 const props = defineProps({
-  zones: { type: Array, required: true },
+  zones: { type: Array, default: () => [] },
 })
 
 const segments = computed(() =>

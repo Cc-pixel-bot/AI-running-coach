@@ -10,6 +10,11 @@ function json(value, fallback = {}) {
   return JSON.stringify(value === undefined || value === null ? fallback : value)
 }
 
+function parseJson(value, fallback = null) {
+  if (value && typeof value === 'object') return value
+  try { return value ? JSON.parse(value) : fallback } catch { return fallback }
+}
+
 function toSeconds(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value)
   const match = String(value || '').match(/(\d+)\D+(\d{1,2})/)
@@ -27,8 +32,8 @@ function sessionStatus(value) {
   return value === 'done' || value === 'skipped' || value === 'replaced' ? value : 'pending'
 }
 
-function roundUpToFiveMinutes(seconds) {
-  return Math.ceil(seconds / (5 * 60)) * (5 * 60)
+function roundToFiveMinutes(seconds) {
+  return Math.round(seconds / (5 * 60)) * (5 * 60)
 }
 
 function buildGoalRecommendation(profile) {
@@ -40,22 +45,32 @@ function buildGoalRecommendation(profile) {
   const longestRunKm = Number(profile.longestRunKm) || 0
   const runsPerWeek = Number(profile.runsPerWeek) || 0
   const availableDays = Number(profile.availableDays) || 0
-  const limitedBase = weeklyKm < 15 || longestRunKm < 6 || runsPerWeek < 3 || availableDays < 3
-  if (!limitedBase) return null
-
   const currentEstimate = Number(profile.best10kPace) > 0
     ? Number(profile.best10kPace) * 10
     : Number(profile.easyPace) > 0
       ? Number(profile.easyPace) * 10
       : null
-  if (!currentEstimate || targetTime >= currentEstimate * 0.9) return null
+  if (!currentEstimate || targetTime >= currentEstimate) return null
 
-  const suggestedTargetTime = Math.min(70 * 60, Math.max(45 * 60, roundUpToFiveMinutes(currentEstimate * 0.95)))
-  if (suggestedTargetTime <= targetTime) return null
+  // 先看目标差距，再看训练基础。训练基础决定 8 周周期内可以给出的阶段性进步空间。
+  const goalGap = (currentEstimate - targetTime) / currentEstimate
+  if (goalGap < 0.1) return null
+  const baseScore = Math.min(1, weeklyKm / 30) * 0.35
+    + Math.min(1, longestRunKm / 12) * 0.25
+    + Math.min(1, runsPerWeek / 4) * 0.2
+    + Math.min(1, availableDays / 4) * 0.2
+  const improvementRate = Math.min(0.12, Math.max(0.05, 0.05 + baseScore * 0.07))
+  const attainableTarget = currentEstimate * (1 - improvementRate)
+  const suggestedTargetTime = Math.min(
+    currentEstimate - 5 * 60,
+    Math.max(45 * 60, roundToFiveMinutes(attainableTarget)),
+  )
+  if (suggestedTargetTime <= targetTime || suggestedTargetTime >= currentEstimate) return null
+  const baseDescription = baseScore < 0.45 ? '当前训练基础还在建立阶段' : baseScore < 0.7 ? '当前训练基础可以支持稳步提升' : '当前训练基础较稳定，可以安排适度进步'
   return {
     suggestedTargetTime,
     suggestedTargetPace: Math.round(suggestedTargetTime / 10),
-    reason: '你当前的训练频率、近期跑量或最长连续跑，与当前目标成绩之间的差距较大。先采用更稳妥的目标，能留出建立训练基础和恢复的空间。',
+    reason: `当前最好成绩约为${Math.round(currentEstimate / 60)}分钟，目标快了${Math.round(goalGap * 100)}%；${baseDescription}，本周期先安排约${Math.round(improvementRate * 100)}%的阶段性提升更合适。`,
   }
 }
 
@@ -188,6 +203,38 @@ async function persistGeneratedPlan(userId, plan, template) {
   }
 }
 
+function aiErrorMessage(error) {
+  if (error.code === 'AI_NOT_CONFIGURED') return 'AI 服务尚未配置，请先配置模型服务'
+  if (error.code === 'AI_TIMEOUT') return 'AI 计划生成超时，请稍后重试'
+  if (error.code === 'AI_PROVIDER_UNAVAILABLE') return 'AI 服务当前无法连接，请检查后端网络后重试'
+  if (error.code === 'AI_PROVIDER_HTTP') return `AI 服务返回异常（${error.status}），请稍后重试`
+  if (error.code === 'AI_OUTPUT_PARSE') return 'AI 返回内容无法识别，请稍后重试'
+  if (error.code === 'AI_OUTPUT_INVALID') return 'AI 生成的训练计划未通过安全校验'
+  return 'AI 计划生成失败，请稍后重试'
+}
+
+async function runPlanTask(taskId, userId, profile) {
+  try {
+    await pool.execute('UPDATE ai_plan_task SET status = \'running\', progress = 10 WHERE id = ? AND user_id = ?', [taskId, userId])
+    const template = matchTrainingTemplate(profile)
+    const plan = await generatePlan({ profile, template })
+    await pool.execute('UPDATE ai_plan_task SET progress = 85 WHERE id = ? AND user_id = ?', [taskId, userId])
+    const planId = await persistGeneratedPlan(userId, plan, template)
+    await pool.execute(
+      `UPDATE ai_plan_task SET status = 'succeeded', progress = 100, result = ?, finished_at = CURRENT_TIMESTAMP(3)
+       WHERE id = ? AND user_id = ?`,
+      [json({ status: 'completed', plan, template, planId }), taskId, userId],
+    )
+  } catch (error) {
+    console.error('[ai-plan-task]', error)
+    await pool.execute(
+      `UPDATE ai_plan_task SET status = 'failed', progress = 100, error_message = ?, finished_at = CURRENT_TIMESTAMP(3)
+       WHERE id = ? AND user_id = ?`,
+      [aiErrorMessage(error), taskId, userId],
+    )
+  }
+}
+
 function profileFromRow(row) {
   const screening = row.screening_result || {}
   return {
@@ -240,6 +287,56 @@ router.post('/generate', requireAuth, async (req, res, next) => {
     if (error.code === 'AI_PROVIDER_HTTP') return res.status(502).json({ status: 'failed', message: `AI 服务返回异常（${error.status}），请稍后重试` })
     if (error.code === 'AI_OUTPUT_PARSE') return res.status(502).json({ status: 'failed', message: 'AI 返回内容无法识别，请稍后重试' })
     if (error.code === 'AI_OUTPUT_INVALID') return res.status(422).json({ status: 'failed', message: error.message, details: error.details })
+    return next(error)
+  }
+})
+
+router.post('/generate-async', requireAuth, async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM runner_profile WHERE user_id = ? LIMIT 1', [req.auth.sub])
+    const storedProfile = rows[0] ? profileFromRow(rows[0]) : null
+    const profile = req.body?.profile || storedProfile
+    if (!profile) return res.status(409).json({ status: 'blocked', message: '请先完成跑者档案' })
+    if (profile.targetDistance !== '10K' && profile.targetDistance !== '10km') {
+      return res.status(400).json({ status: 'blocked', message: '当前仅支持 10 公里目标' })
+    }
+    if (profile.riskLevel === 'medical_confirm' || profile.screening?.riskLevel === 'medical_confirm') {
+      return res.status(409).json({ status: 'blocked', message: '当前风险筛查需要医疗确认，请先完成安全确认' })
+    }
+    const goalRecommendation = buildGoalRecommendation(profile)
+    if (goalRecommendation) return res.json({ status: 'goal_adjustment_recommended', goalRecommendation })
+    const [result] = await pool.execute(
+      `INSERT INTO ai_plan_task (user_id, profile, status, progress) VALUES (?, ?, 'queued', 5)`,
+      [req.auth.sub, json(profile)],
+    )
+    const taskId = Number(result.insertId)
+    setImmediate(() => runPlanTask(taskId, req.auth.sub, profile))
+    return res.status(202).json({ status: 'queued', taskId })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+router.get('/tasks/:id', requireAuth, async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT id, status, progress, result, error_message, created_at, updated_at, finished_at FROM ai_plan_task WHERE id = ? AND user_id = ? LIMIT 1',
+      [req.params.id, req.auth.sub],
+    )
+    const task = rows[0]
+    if (!task) return res.status(404).json({ message: '计划生成任务不存在' })
+    const result = task.result && typeof task.result === 'object' ? task.result : parseJson(task.result, null)
+    return res.json({
+      taskId: Number(task.id),
+      status: task.status,
+      progress: Number(task.progress || 0),
+      result,
+      error: task.error_message || null,
+      createdAt: task.created_at,
+      updatedAt: task.updated_at,
+      finishedAt: task.finished_at,
+    })
+  } catch (error) {
     return next(error)
   }
 })

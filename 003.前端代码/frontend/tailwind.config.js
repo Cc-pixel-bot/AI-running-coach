@@ -2,7 +2,7 @@
  * Design Token —— 全站唯一的视觉语言定义处。
  *
  * 取值来源：
- *  1. PRD v1.2 §3.3.2「视觉配色」（品牌橙 / 品牌红 / 主文字 / 次文字 / 页面背景）
+ *  1. 当前版本 PRD 的视觉配色（品牌橙 / 品牌红 / 主文字 / 次文字 / 页面背景）
  *  2. 002.产品UI原型/1比1原型图 的 Stitch 视觉稿（Material 化色板 + 字体排版）
  *
  * 命名沿用原型稿的 Material 语义色命名（surface-container-* / on-surface / primary-container），

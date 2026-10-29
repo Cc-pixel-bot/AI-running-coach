@@ -17,8 +17,8 @@ const run = useRunStore()
 const ui = useUiStore()
 
 const showFinishModal = ref(false)
-const holdTimer = ref(null)
-const holding = ref(false)
+const countdown = ref(null)
+const countdownTimer = ref(null)
 
 const session = computed(() => {
   const id = route.query.session
@@ -41,48 +41,43 @@ const zoneTone = computed(() => {
   return 'text-success'
 })
 
-onMounted(() => {
+onMounted(async () => {
   if (!session.value) {
     ui.toast('未找到课次', 'warn')
     router.replace('/plan')
     return
   }
+  for (let count = 3; count > 0; count -= 1) {
+    countdown.value = count
+    await new Promise((resolve) => { countdownTimer.value = setTimeout(resolve, 700) })
+  }
+  countdown.value = null
   const factor = Number(route.query.factor) || 1
   run.startSession(session.value, { speedFactor: factor })
 })
 
 onBeforeUnmount(() => {
   run.stopTimer()
+  if (countdownTimer.value) clearTimeout(countdownTimer.value)
 })
 
 function togglePause() {
   run.togglePause()
 }
 
-function markLap() {
-  run.markLap()
-  ui.toast('已记录分段', 'success')
-}
-
-function startHold() {
-  holding.value = true
-  holdTimer.value = setTimeout(() => {
-    showFinishModal.value = true
-    holding.value = false
-  }, 700)
-}
-
-function cancelHold() {
-  if (holdTimer.value) clearTimeout(holdTimer.value)
-  holdTimer.value = null
-  holding.value = false
-}
-
 function confirmFinish() {
   showFinishModal.value = false
   const record = run.finish()
-  router.replace({ name: 'feedback', query: { record: record?.id } })
+  router.replace({ name: 'run-prep', query: { session: record?.sessionId } })
 }
+
+function discardRun() {
+  showFinishModal.value = false
+  run.reset()
+  router.replace({ name: 'run-prep', query: { session: session.value?.id } })
+}
+
+const underTarget = computed(() => Boolean(session.value?.distanceKm && run.distanceKm < session.value.distanceKm * 0.999))
 </script>
 
 <template>
@@ -90,6 +85,10 @@ function confirmFinish() {
     <AppHeader title="实时训练" subtitle="训练进行中 · 智程" back />
 
     <div class="flex-1 flex flex-col pt-14 pb-2">
+      <div v-if="countdown" class="fixed inset-0 z-50 bg-inverse-surface/90 flex flex-col items-center justify-center text-on-primary">
+        <span class="font-label-caps text-label-caps tracking-widest opacity-80">准备开始</span>
+        <strong class="text-[96px] leading-none font-extrabold mt-3">{{ countdown }}</strong>
+      </div>
       <!-- 实时配速 -->
       <section class="px-gutter py-space-xs">
         <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-card relative overflow-hidden">
@@ -167,7 +166,7 @@ function confirmFinish() {
           :value="run.averagePace ? formatPace(run.averagePace) : '--'"
           tone="brand"
           hint-icon="bolt"
-          :hint="run.lapCount ? `已计 ${run.lapCount} 圈` : '步频稳定'"
+          hint="步频稳定"
         />
       </section>
 
@@ -192,19 +191,14 @@ function confirmFinish() {
         <div class="bg-surface-container-lowest p-space-md rounded-xl shadow-card-lg flex items-center justify-around relative">
           <div class="flex flex-col items-center gap-1">
             <button
-              aria-label="长按结束"
+              aria-label="结束训练"
               class="relative w-16 h-16 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-              :class="holding && 'scale-90'"
               type="button"
-              @mousedown="startHold"
-              @mouseup="cancelHold"
-              @mouseleave="cancelHold"
-              @touchstart.prevent="startHold"
-              @touchend="cancelHold"
+              @click="showFinishModal = true"
             >
               <Icon name="stop" :size="24" />
             </button>
-            <span class="font-label-caps text-label-caps text-on-surface-variant font-bold">长按结束</span>
+            <span class="font-label-caps text-label-caps text-on-surface-variant font-bold">结束训练</span>
           </div>
 
           <div class="flex flex-col items-center gap-1">
@@ -221,17 +215,6 @@ function confirmFinish() {
             </span>
           </div>
 
-          <div class="flex flex-col items-center gap-1">
-            <button
-              aria-label="记录分段"
-              class="w-12 h-12 rounded-full bg-surface-container text-on-surface flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-              type="button"
-              @click="markLap"
-            >
-              <Icon name="flag" :size="22" />
-            </button>
-            <span class="font-label-caps text-label-caps text-on-surface-variant font-bold">计圈分段</span>
-          </div>
         </div>
       </section>
     </div>
@@ -249,22 +232,22 @@ function confirmFinish() {
         <p class="font-body-md text-body-md text-on-surface-variant mb-space-md">
           本次共跑步 <span class="font-bold text-primary">{{ run.distanceKm.toFixed(2) }}公里</span>，用时
           <span class="font-bold text-primary">{{ formatDuration(run.elapsedSec) }}</span>。<br />
-          轨迹与训练数据已就绪，立即填写训练反馈。
+          {{ underTarget ? '还没有达到目标距离，请选择是否记录本次训练数据。' : '训练数据已就绪，点击记录数据保存本次训练。' }}
         </p>
         <div class="flex items-center gap-space-sm w-full">
-          <button
+          <button v-if="underTarget"
             class="flex-1 py-2 rounded-lg bg-surface-container text-on-surface font-semibold text-body-md"
             type="button"
-            @click="showFinishModal = false"
+            @click="discardRun"
           >
-            继续跑步
+            不记录
           </button>
           <button
             class="flex-1 py-2 rounded-lg bg-primary text-on-primary font-semibold text-body-md shadow-md active:scale-95 flex items-center justify-center gap-1"
             type="button"
             @click="confirmFinish"
           >
-            <span>填写反馈</span><Icon name="arrow_forward" :size="16" />
+            <span>记录数据</span><Icon name="arrow_forward" :size="16" />
           </button>
         </div>
       </div>

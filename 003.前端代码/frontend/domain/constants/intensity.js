@@ -1,5 +1,5 @@
 /**
- * 强度档定义 —— PRD v1.2 §B1「强度档定义（三锚点体系）」。
+ * 强度档定义 —— 当前版本的训练强度配置。
  *
  * 三锚点：主观用力（主）+ 配速偏移（副）+ 心率区间（第三轨）。
  * 配速偏移 = 相对目标配速 P（秒/km）的加秒。
@@ -92,8 +92,8 @@ export const INTENSITY = {
   race: {
     key: 'race',
     code: 'Race',
-    name: '比赛配速',
-    shortName: '比赛配速',
+    name: '专项节奏',
+    shortName: '专项节奏',
     effort: '目标节奏',
     talkTest: '短句',
     rpe: [7, 8],

@@ -3,9 +3,11 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlanStore } from '../../stores/plan.js'
 import { useProfileStore } from '../../stores/profile.js'
+import { useUiStore } from '../../stores/ui.js'
 import Icon from '../../components/ui/Icon.vue'
 import WeekCalendar from '../../components/plan/WeekCalendar.vue'
 import ZoneBar from '../../components/plan/ZoneBar.vue'
+import WeekIntensityLine from '../../components/plan/WeekIntensityLine.vue'
 import SessionCard from '../../components/plan/SessionCard.vue'
 import AppButton from '../../components/ui/AppButton.vue'
 import planTrackHero from '../../assets/plan-track-hero.png'
@@ -14,14 +16,13 @@ import { formatClock } from '../../domain/utils/pace.js'
 const router = useRouter()
 const planStore = usePlanStore()
 const profile = useProfileStore()
+const ui = useUiStore()
 
-const selectedWeek = ref(1)
-const showCycleDetails = ref(false)
-const showAdaptationDetails = ref(false)
-const showWeekPicker = ref(false)
+const selectedWeek = ref(null)
 
 const plan = computed(() => planStore.plan)
-const week = computed(() => plan.value?.weeks?.find((w) => w.week === selectedWeek.value) || plan.value?.weeks?.[0])
+const defaultWeek = computed(() => planStore.upcomingSessions[0]?.week || plan.value?.currentWeek || 1)
+const week = computed(() => plan.value?.weeks?.find((w) => w.week === (selectedWeek.value || defaultWeek.value)) || plan.value?.weeks?.[0])
 
 /** 今日待练：当前周第一个未完成的课次 */
 const todaySessionId = computed(() => {
@@ -45,18 +46,40 @@ const currentBestTotal = computed(() => {
   return pace > 0 ? Math.round(pace * distance) : null
 })
 const targetTotal = computed(() => plan.value?.goalTotalSec || null)
+const needsConfirmation = computed(() => plan.value?.status === 'pending_confirm')
+const confirming = ref(false)
+const aiAdjustmentNote = computed(() => planStore.latestAdjustmentSummary)
+function formatSessionRefs(text) {
+  return String(text || '').replace(/\bw(\d+)s(\d+)\b/gi, '第$1周第$2节')
+}
 
 function selectWeek(w) {
   selectedWeek.value = w
-  showWeekPicker.value = false
 }
 
 function openSession(session) {
+  if (needsConfirmation.value) {
+    ui.toast('请先确认训练计划，再开始训练', 'info')
+    return
+  }
   if (session.id === todaySessionId.value) {
     router.push('/run/prep')
     return
   }
   router.push({ name: 'session-detail', params: { id: session.id } })
+}
+
+async function confirmCurrentPlan() {
+  if (confirming.value || !needsConfirmation.value) return
+  confirming.value = true
+  try {
+    await planStore.confirmPlan()
+    ui.toast('训练计划已确认，可以开始训练', 'success')
+  } catch (error) {
+    ui.toast(error.message || '计划确认失败，请稍后重试', 'error')
+  } finally {
+    confirming.value = false
+  }
 }
 </script>
 
@@ -74,6 +97,18 @@ function openSession(session) {
 
     <div v-else class="pb-24">
       <div class="px-gutter space-y-space-md">
+        <section v-if="needsConfirmation" class="rounded-2xl bg-primary-fixed border border-primary-container/30 p-4 shadow-card">
+          <div class="flex items-start gap-2">
+            <Icon name="fact_check" :size="20" class="text-primary shrink-0 mt-0.5" />
+            <div class="flex-1">
+              <h2 class="font-headline-sm text-headline-sm text-on-surface">计划已生成，等待你的确认</h2>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">确认后才会进入训练执行和 GPS 记录流程。</p>
+              <AppButton class="mt-3" variant="primary" :disabled="confirming" @click="confirmCurrentPlan">
+                {{ confirming ? '正在确认…' : '确认并开始执行' }}
+              </AppButton>
+            </div>
+          </div>
+        </section>
         <!-- 1. 训练效果卡：展示从当前基础到目标成绩的提升路径 -->
         <section
           class="keep-plan-card relative overflow-hidden rounded-2xl p-5 shadow-card-lg"
@@ -137,28 +172,8 @@ function openSession(session) {
               <span class="w-1.5 h-4 bg-primary-container rounded-full" />
               <h2 class="font-headline-sm text-headline-sm text-on-surface">阶段进阶全貌</h2>
             </div>
-            <button
-              class="flex items-center gap-1 text-primary-container font-body-sm text-body-sm font-medium"
-              type="button"
-              @click="showCycleDetails = !showCycleDetails"
-            >
-              <Icon :name="showCycleDetails ? 'expand_less' : 'expand_more'" :size="16" />
-              {{ showCycleDetails ? '收起具体信息' : '展开具体信息' }}
-            </button>
           </div>
-          <WeekCalendar :weeks="plan.weeks" :current-week="plan.currentWeek" />
-          <div v-if="showCycleDetails" class="pt-3 grid grid-cols-2 gap-2">
-            <button
-              v-for="w in plan.weeks"
-              :key="w.week"
-              class="px-2 py-1.5 rounded-lg text-left font-label-data text-label-data transition-colors"
-              :class="selectedWeek === w.week ? 'bg-primary-container text-on-primary' : 'bg-surface-container-low text-on-surface-variant'"
-              type="button"
-              @click="selectWeek(w.week)"
-            >
-                第{{ w.week }}周 · {{ w.targetKm }}公里
-            </button>
-          </div>
+          <WeekCalendar :weeks="plan.weeks" :current-week="plan.currentWeek" @select="selectWeek" />
         <!-- 3. 强度分布 -->
         <div class="mt-3 pt-3 border-t border-surface-container">
           <div class="flex items-center justify-between mb-space-sm">
@@ -169,6 +184,7 @@ function openSession(session) {
             <span class="plan-summary-text font-label-data text-label-data text-on-surface-variant">全周期 {{ plan.totalKm }}公里</span>
           </div>
           <ZoneBar :zones="plan.zoneDistribution" />
+          <WeekIntensityLine :weeks="plan.weeks" />
         </div>
         </section>
 
@@ -180,32 +196,6 @@ function openSession(session) {
               <h2 class="font-headline-sm text-headline-sm text-on-surface">
                 {{ week.week === 1 ? '第一周训练计划' : `第${week.week}周训练计划` }}
               </h2>
-              <div class="relative shrink-0">
-                <button
-                  class="flex items-center gap-0.5 text-primary-container font-body-sm text-body-sm font-medium"
-                  type="button"
-                  aria-label="选择训练周"
-                  @click="showWeekPicker = !showWeekPicker"
-                >
-                  第{{ week.week }}周
-                  <Icon :name="showWeekPicker ? 'expand_less' : 'expand_more'" :size="17" />
-                </button>
-                <div
-                  v-if="showWeekPicker"
-                  class="absolute left-0 top-7 z-20 w-32 p-1.5 rounded-xl bg-surface-container-lowest border border-surface-container-high shadow-card-lg"
-                >
-                  <button
-                    v-for="w in plan.weeks"
-                    :key="w.week"
-                    class="w-full px-2.5 py-2 rounded-lg text-left text-xs transition-colors"
-                    :class="selectedWeek === w.week ? 'bg-primary-container text-on-primary font-bold' : 'text-on-surface hover:bg-surface-container'"
-                    type="button"
-                    @click="selectWeek(w.week)"
-                  >
-                    第{{ w.week }}周
-                  </button>
-                </div>
-              </div>
             </div>
             <span class="plan-summary-text font-body-sm text-body-sm text-on-surface-variant">
               共{{ week.sessions.length }}课次 · 目标{{ week.targetKm }}公里
@@ -224,7 +214,7 @@ function openSession(session) {
 
         <!-- 4. AI 适配说明 -->
         <section class="bg-surface-container-low rounded-xl p-space-md shadow-card relative overflow-hidden">
-          <div class="flex items-start justify-between gap-2">
+          <div class="flex items-start gap-2">
             <div class="flex items-center gap-2">
               <div class="w-8 h-8 rounded-full bg-primary-fixed flex items-center justify-center text-primary shrink-0">
                 <Icon name="psychology" :size="18" />
@@ -235,26 +225,22 @@ function openSession(session) {
                 </div>
               </div>
             </div>
-            <button
-              class="flex items-center gap-1 text-primary-container font-body-sm text-body-sm font-medium shrink-0"
-              type="button"
-              @click="showAdaptationDetails = !showAdaptationDetails"
-            >
-              <Icon :name="showAdaptationDetails ? 'expand_less' : 'expand_more'" :size="16" />
-              {{ showAdaptationDetails ? '收起' : '展开具体信息' }}
-            </button>
           </div>
 
           <div class="pt-space-sm space-y-2">
-            <div
-              v-for="item in showAdaptationDetails ? plan.adaptationSummary : plan.adaptationSummary.slice(0, 1)"
-              :key="item.title"
-              class="p-2.5 rounded-lg bg-surface-container-lowest/80 flex gap-2"
-            >
-              <Icon :name="item.icon" :size="16" class="text-primary shrink-0 mt-0.5" />
+            <div v-if="aiAdjustmentNote" class="p-2.5 rounded-lg bg-primary-fixed/60 flex gap-2">
+              <Icon name="auto_awesome" :size="16" class="text-primary shrink-0 mt-0.5" />
               <div class="min-w-0">
-                <p class="plan-summary-text font-body-sm text-body-sm text-primary font-medium">{{ item.title }}</p>
-                <p class="plan-explanation text-body-sm text-on-surface leading-relaxed mt-0.5">{{ item.text }}</p>
+                <p class="plan-summary-text font-body-sm text-body-sm text-primary font-medium">本次 AI 调整说明</p>
+                <p class="plan-explanation text-body-sm text-on-surface leading-relaxed mt-0.5">{{ formatSessionRefs(aiAdjustmentNote.summary || '智程已结合本次反馈更新后续训练安排。') }}</p>
+                <p v-if="aiAdjustmentNote.followUp?.holdCondition" class="text-body-sm text-on-surface-variant leading-relaxed mt-1">接下来关注：{{ formatSessionRefs(aiAdjustmentNote.followUp.holdCondition) }}</p>
+              </div>
+            </div>
+            <div v-else class="p-2.5 rounded-lg bg-surface-container-lowest/80 flex gap-2">
+              <Icon name="psychology" :size="16" class="text-primary shrink-0 mt-0.5" />
+              <div class="min-w-0">
+                <p class="plan-summary-text font-body-sm text-body-sm text-primary font-medium">当前计划说明</p>
+                <p class="plan-explanation text-body-sm text-on-surface leading-relaxed mt-0.5">智程教练会根据你的身体数据，运动基础，伤病情况定制专属训练计划。</p>
               </div>
             </div>
           </div>

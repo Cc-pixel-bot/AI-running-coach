@@ -3,7 +3,6 @@ import { load, save, clearUserData } from '../services/storage.js'
 import { evaluateScreening } from '../domain/constants/screening.js'
 import { parseDuration } from '../domain/utils/pace.js'
 import { TARGET_TYPES } from '../domain/templates/trainingTemplates.js'
-import { DEMO_PROFILE, createRandomDemoProfile } from '../data/demoSeed.js'
 import { getProfileApi, saveProfileApi, confirmProfileApi } from '../services/profileApi.js'
 
 /** 跑者档案（建档草稿 + 筛查结果） */
@@ -131,16 +130,6 @@ export const useProfileStore = defineStore('profile', {
         screening[key] = value
       }
       this.patch({ screening })
-    },
-    loadDemo(profile = DEMO_PROFILE) {
-      this.patch({ ...profile })
-      this.confirmed = false
-      this.confirmedAt = null
-      save('profileConfirmed', false)
-      save('profileConfirmedAt', null)
-    },
-    loadRandomDemo() {
-      this.loadDemo(createRandomDemoProfile())
     },
     confirm() {
       this.confirmed = true

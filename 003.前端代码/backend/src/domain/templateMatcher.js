@@ -1,7 +1,7 @@
 import { TEMPLATES } from './trainingTemplates.js'
 
 /**
- * 模板匹配规则均为产品 Demo 规则，不是官方分界值。
+ * 模板匹配配置用于提供 AI 计划生成的候选模板，不是官方分界值。
  */
 export function matchTrainingTemplate(profile = {}) {
   const weeklyKm = Number(profile.weeklyKm) || 0

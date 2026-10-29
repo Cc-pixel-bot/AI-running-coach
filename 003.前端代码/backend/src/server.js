@@ -1,11 +1,13 @@
 import express from 'express'
 import cors from 'cors'
 import { config } from './config.js'
-import { checkDatabase } from './db.js'
+import { checkDatabase, ensureRuntimeTables } from './db.js'
 import authRoutes from './routes/auth.js'
 import profileRoutes from './routes/profile.js'
 import planRoutes from './routes/plans.js'
 import aiPlanRoutes from './routes/aiPlans.js'
+import runRoutes from './routes/runs.js'
+import aiAdjustmentRoutes from './routes/aiAdjustments.js'
 
 const app = express()
 
@@ -37,12 +39,19 @@ app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/plans', planRoutes)
 app.use('/api/ai/plans', aiPlanRoutes)
+app.use('/api/runs', runRoutes)
+app.use('/api/ai/plans', aiAdjustmentRoutes)
 
 app.use((error, _req, res, _next) => {
   console.error('[api]', error)
   res.status(500).json({ message: '服务器暂时不可用，请稍后重试' })
 })
 
-app.listen(config.port, () => {
-  console.log(`智程 API running at http://localhost:${config.port}`)
-})
+ensureRuntimeTables()
+  .then(() => app.listen(config.port, () => {
+    console.log(`智程 API running at http://localhost:${config.port}`)
+  }))
+  .catch((error) => {
+    console.error('[startup] database initialization failed', error)
+    process.exitCode = 1
+  })

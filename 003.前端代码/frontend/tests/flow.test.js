@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { usePlanStore } from '../stores/plan.js'
 import { useRunStore } from '../stores/run.js'
 import { useProfileStore } from '../stores/profile.js'
-import { DEMO_PROFILE } from '../data/demoSeed.js'
+import { TEST_PROFILE } from './fixtures.js'
 
 vi.mock('../services/authApi.js', () => ({
   generateAiPlanApi: vi.fn(async (_token, profile) => {
@@ -49,6 +49,33 @@ vi.mock('../services/authApi.js', () => ({
       },
     }
   }),
+  requestAiAdjustmentApi: vi.fn(async () => ({
+    adjustmentId: 21,
+    triggered: true,
+    source: 'ai',
+    decision: 'adjust',
+    scope: 'micro',
+    triggerReasons: ['PAIN_FEEDBACK'],
+    adjustmentEpisode: {
+      reviewAfterSessionId: 'w1s2',
+      holdCondition: '疼痛仍高于 3 分时继续低负荷。',
+    },
+    followUp: { nextAction: 'bridge_then_resume', nextReviewAfterSessionId: 'w1s2' },
+    adjustments: [
+      {
+        id: 'adj_1',
+        type: 'MODIFY_SESSION',
+        target: { sessionId: 'w1s2' },
+        before: { distanceKm: 6, durationMin: 40 },
+        after: { distanceKm: 4, durationMin: 30, type: 'easy', title: '轻松恢复跑' },
+        reasonCode: 'PAIN_RECOVERY',
+        reasonText: 'AI 根据疼痛和疲劳反馈降低下一节训练负荷。',
+      },
+    ],
+    safetyNotice: null,
+    summary: 'AI 已根据本次反馈调整后续训练。',
+  })),
+  decideAiAdjustmentApi: vi.fn(async () => ({ saved: true })),
 }))
 
 /**
@@ -68,7 +95,7 @@ describe('Demo 主链路闭环', () => {
     const run = useRunStore()
 
     // ① 建档
-    profile.loadDemo(DEMO_PROFILE)
+    profile.patch(TEST_PROFILE)
     expect(profile.isComplete).toBe(true)
     expect(profile.bmi).toBe(22.2)
 
@@ -83,6 +110,7 @@ describe('Demo 主链路闭环', () => {
     run.startSession(session, { speedFactor: 60 })
     for (let i = 0; i < 200; i += 1) run._tick()
     const record = run.finish()
+    run.record.serverId = 'test-record-1'
     expect(record.actualDistanceKm).toBeGreaterThan(0)
     expect(record.actualDurationSec).toBeGreaterThan(0)
 
@@ -105,13 +133,14 @@ describe('Demo 主链路闭环', () => {
     // ⑥ 调整：疼痛 → 质量课降级
     expect(run.lastAdjustments.length).toBeGreaterThan(0)
     const codes = run.lastAdjustments.map((a) => a.reasonCode)
-    expect(codes).toContain('PAIN_REPLACE')
+    expect(codes).toContain('PAIN_RECOVERY')
 
-    const changedSession = run.lastAdjustments.find((a) => a.reasonCode === 'PAIN_REPLACE')
+    const changedSession = run.lastAdjustments.find((a) => a.reasonCode === 'PAIN_RECOVERY')
     expect(changedSession.after.type).toBe('easy')
 
     // ⑦ 用户采纳 → 计划写回（计划真的变了）
-    planStore.decideAdjustments('accepted')
+    await run.completeTraining()
+    await planStore.decideAdjustments('accepted')
     expect(planStore.adjustmentLogs[0].decision).toBe('accepted')
     expect(planStore.adjustmentLogs[0].count).toBeGreaterThan(0)
     expect(JSON.stringify(planStore.plan)).not.toBe(planBeforeAdjust)
@@ -123,7 +152,7 @@ describe('Demo 主链路闭环', () => {
   it('安全闸门命中时不生成计划（不进入训练）', async () => {
     const profile = useProfileStore()
     const planStore = usePlanStore()
-    profile.loadDemo({ ...DEMO_PROFILE, screening: { q1: 'yes', q2: ['chest_pain'], q3: 'no' } })
+    profile.patch({ ...TEST_PROFILE, screening: { q1: 'yes', q2: ['chest_pain'], q3: 'no' } })
     const result = await planStore.generate(profile.toEngineProfile())
     expect(result.blocked).toBe(true)
     expect(planStore.hasPlan).toBe(false)

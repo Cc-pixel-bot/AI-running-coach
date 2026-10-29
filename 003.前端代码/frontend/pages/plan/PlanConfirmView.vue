@@ -215,8 +215,8 @@ async function keepCurrentGoal() {
       </section>
 
       <div class="space-y-2 pt-1">
-        <AppButton variant="primary" :disabled="loading" icon="check_circle" @click="confirmPlan">
-          {{ loading ? '智程正在生成计划…' : '确认计划' }}
+        <AppButton v-if="!goalRecommendation" variant="primary" :disabled="loading" icon="auto_awesome" @click="confirmPlan">
+          {{ loading ? '智程正在生成计划…' : '生成训练计划' }}
         </AppButton>
         <AppButton variant="secondary" @click="router.push('/profile/confirm')">返回修改档案</AppButton>
       </div>

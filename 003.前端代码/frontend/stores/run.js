@@ -6,8 +6,9 @@ import { buildCuePack } from '../services/voiceCoach.js'
 import { buildSummary, fallbackSummary } from '../domain/engine/summaryBuilder.js'
 import { usePlanStore } from './plan.js'
 import { useHistoryStore } from './history.js'
-import { useProfileStore } from './profile.js'
 import { save } from '../services/storage.js'
+import { load } from '../services/storage.js'
+import { saveFeedbackApi, saveRunApi, completeRunApi, requestAiAdjustmentApi } from '../services/authApi.js'
 
 /** 训练执行：GPS 记录 → 结束 → 反馈 → AI 总结与计划调整 */
 export const useRunStore = defineStore('run', {
@@ -23,7 +24,6 @@ export const useRunStore = defineStore('run', {
     averagePace: 0,
     currentZone: 'easy',
     pauseCount: 0,
-    lapCount: 0,
     /** 轨迹点（响应式镜像，避免 markRaw 的模拟器对象无法触发视图更新） */
     trackPoints: [],
     zoneSeconds: {},
@@ -32,17 +32,18 @@ export const useRunStore = defineStore('run', {
     record: null,
     feedback: null,
     summary: null,
+    aiSummaryText: '',
+    summarySource: 'engine',
     lastAdjustments: [],
     safetyNotice: null,
+    adjustmentId: null,
+    adjustmentDecision: null,
+    adjustmentScope: null,
+    adjustmentEpisode: null,
+    followUp: null,
+    serverSavePromise: null,
     /** 当前课次的练前/练后完成状态，反馈提交后仍保留并可继续修改 */
     prepChecklist: {},
-    /** Demo：本次训练直接给出「疼痛 5 分」的反馈预设（PRD §9.2 演示脚本） */
-    demoFeedbackPreset: 'pain5',
-    demoFeedbackPresets: [
-      { key: 'pain5', label: '疼痛 5 分（小腿）', completion: 'mostly', rpe: 7, painScore: 5, painParts: ['小腿'], feel: 'fatigued', note: '最后 1 公里实在顶不住了，右小腿发紧。' },
-      { key: 'good', label: '完全完成 · 无疼痛', completion: 'full', rpe: 6, painScore: 0, painParts: [], feel: 'normal', note: '配速稳定，最后一段还有余力。' },
-      { key: 'overreach', label: '过度负荷 · RPE 9', completion: 'mostly', rpe: 9, painScore: 2, painParts: [], feel: 'very_hard', note: '全程都很吃力，呼吸压不下来。' },
-    ],
   }),
 
   getters: {
@@ -60,6 +61,7 @@ export const useRunStore = defineStore('run', {
   actions: {
     startSession(session, { speedFactor = 1 } = {}) {
       this.session = session
+      this.startedAt = new Date().toISOString()
       this.speedFactor = speedFactor
       this.gpsError = ''
       const isTestRun = import.meta.env?.MODE === 'test'
@@ -78,11 +80,15 @@ export const useRunStore = defineStore('run', {
       this.record = null
       this.feedback = null
       this.summary = null
+      this.aiSummaryText = ''
       this.lastAdjustments = []
       this.safetyNotice = null
+      this.adjustmentDecision = null
+      this.adjustmentScope = null
+      this.adjustmentEpisode = null
+      this.followUp = null
       this.trackPoints = []
       this.pauseCount = 0
-      this.lapCount = 0
       this.currentZone = 'easy'
       this.simulator.start()
       this.status = 'running'
@@ -114,7 +120,6 @@ export const useRunStore = defineStore('run', {
       this.averagePace = sim.averagePace
       this.currentZone = sim.currentZone
       this.pauseCount = sim.pauseCount
-      this.lapCount = sim.laps.length
       this.zoneSeconds = sim.zoneSeconds
       this.trackPoints = sim.points.slice(-240)
       this.status = sim.status
@@ -153,12 +158,6 @@ export const useRunStore = defineStore('run', {
       if (this.status === 'paused') this._pushCue('intensity', '已手动暂停，计时与距离统计都已冻结。')
     },
 
-    markLap() {
-      if (!this.simulator) return
-      this.simulator.markLap()
-      this._pushCue('km', `已记录第 ${this.simulator.laps.length} 个分段。`)
-    },
-
     finish() {
       if (!this.simulator) return null
       this._stopTimer()
@@ -171,19 +170,38 @@ export const useRunStore = defineStore('run', {
         sessionTitle: this.session.title,
         week: this.session.week,
         date: new Date().toISOString().slice(0, 10),
+        startedAt: this.startedAt || new Date().toISOString(),
+        endedAt: new Date().toISOString(),
         type: this.session.type,
         ...stats,
       }
       save('lastRecord', this.record)
+      this.persistRecordToServer()
       return this.record
     },
 
-    /** 提交反馈 → 规则引擎计算调整 → 生成四段式总结 */
+    async persistRecordToServer() {
+      const token = load('authToken', null)
+      if (token && this.record && !this.record.serverId && import.meta.env?.MODE !== 'test') {
+        this.serverSavePromise = saveRunApi(token, this.record)
+          .then((result) => { this.record = { ...this.record, serverId: result.recordId } })
+          .catch((error) => { this.gpsError = error.message || '训练记录保存失败，稍后可重试' })
+      }
+      if (this.serverSavePromise) await this.serverSavePromise
+      return this.record?.serverId || null
+    },
+
+    /** 提交反馈 → 变化检测 → AI 调整评估 → 生成训练总结 */
     async submitFeedback(feedback) {
       const planStore = usePlanStore()
       const historyStore = useHistoryStore()
-      const profileStore = useProfileStore()
       this.feedback = feedback
+
+      const token = load('authToken', null)
+      if (this.serverSavePromise) await this.serverSavePromise
+      if (token && import.meta.env?.MODE !== 'test' && this.record?.serverId) {
+        await saveFeedbackApi(token, this.record.serverId, feedback)
+      }
 
       // 反馈页允许修正实际距离与用时，写回本次记录，供当前训练页和训练总结使用。
       if (this.record) {
@@ -200,38 +218,52 @@ export const useRunStore = defineStore('run', {
         }
       }
 
-      const plan = planStore.plan
-      const recentRecords = historyStore.records.slice(0, 4).map((r) => ({
-        ...r,
-        feedback: r.feedback,
-      }))
-      const longest30dKm = Math.max(
-        this.record?.actualDistanceKm || 0,
-        ...historyStore.records.map((r) => r.actualDistanceKm || 0),
-        0,
-      )
-
-      // 距目标日期天数（用于 P8 减量 / P9 比赛周 / P10 风险复核）
-      let daysToRace = null
-      const targetDate = profileStore.draft?.targetDate
-      if (targetDate) {
-        daysToRace = Math.ceil((new Date(targetDate) - new Date()) / 864e5)
-      }
-
       let adjustments = []
       let safetyNotice = null
-      // 先标记课次完成（可能解锁下一周），再计算调整，保证写回的新计划包含最新状态
-      if (this.session) planStore.markSessionDone(this.session.id, 'done')
-      if (plan) {
-        const result = planStore.computeAdjust({
-          record: this.record,
-          feedback,
-          recentRecords,
-          longest30dKm: longest30dKm || 8,
-          daysToRace,
-        })
-        adjustments = result.adjustments
-        safetyNotice = result.safetyNotice
+      if (planStore.plan && token && this.record?.serverId) {
+          const result = await requestAiAdjustmentApi(token, this.record.serverId)
+          adjustments = (result.adjustments || []).map((item) => ({
+            ...item,
+            target: {
+              ...item.target,
+              label: (() => {
+                const target = planStore.plan?.weeks?.flatMap((week) => week.sessions).find((session) => session.id === item.target?.sessionId)
+                return target ? `第${target.week}周 · ${target.dayLabel} · ${target.title}` : '后续训练'
+              })(),
+            },
+          }))
+          safetyNotice = result.safetyNotice || null
+          this.aiSummaryText = result.summary || ''
+          this.summarySource = result.source || 'ai'
+          this.adjustmentId = result.adjustmentId || null
+          this.adjustmentDecision = result.decision || (adjustments.length ? 'adjust' : 'keep')
+          this.adjustmentScope = result.scope || (adjustments.length ? 'micro' : 'none')
+          this.adjustmentEpisode = result.adjustmentEpisode || null
+          this.followUp = result.followUp || null
+          planStore.latestAdjustmentSummary = {
+            summary: result.summary || '',
+            followUp: this.followUp,
+            date: new Date().toISOString().slice(0, 10),
+          }
+          save('latestAdjustmentSummary', planStore.latestAdjustmentSummary)
+          planStore.remoteAdjustmentId = this.adjustmentId
+          const pendingPlan = JSON.parse(JSON.stringify(planStore.plan))
+          adjustments.forEach((item) => {
+            const target = pendingPlan.weeks.flatMap((week) => week.sessions).find((session) => session.id === item.target.sessionId)
+            if (!target) return
+            Object.assign(target, item.after || {})
+            target.status = 'replaced'
+          })
+          planStore.pendingPlan = pendingPlan
+          planStore.pendingAdjustments = adjustments
+          planStore.pendingSafetyNotice = safetyNotice
+          planStore.pendingAdjustmentMeta = {
+            decision: this.adjustmentDecision,
+            scope: this.adjustmentScope,
+            triggerReasons: result.triggerReasons || [],
+            adjustmentEpisode: this.adjustmentEpisode,
+            followUp: this.followUp,
+          }
       }
       this.lastAdjustments = adjustments
       this.safetyNotice = safetyNotice
@@ -243,7 +275,12 @@ export const useRunStore = defineStore('run', {
         adjustments,
       })
       this.summary.text = fallbackSummary({ record: this.record, feedback })
-      this.summary.source = 'engine'
+      if (this.aiSummaryText) {
+        this.summary.text = this.aiSummaryText
+        this.summary.source = this.summarySource
+      } else {
+        this.summary.source = 'local-fallback'
+      }
 
       historyStore.add({
         ...this.record,
@@ -251,6 +288,9 @@ export const useRunStore = defineStore('run', {
         summary: this.summary,
         adjustments,
       })
+
+      // 反馈提交也视为本次训练完成的兜底入口，保证用户从反馈页返回计划时状态一致。
+      await this.completeTraining()
 
       return { summary: this.summary, adjustments, safetyNotice }
     },
@@ -270,10 +310,28 @@ export const useRunStore = defineStore('run', {
       this.record = null
       this.feedback = null
       this.summary = null
+      this.aiSummaryText = ''
+      this.summarySource = 'engine'
       this.lastAdjustments = []
       this.safetyNotice = null
+      this.adjustmentId = null
+      this.adjustmentDecision = null
+      this.adjustmentScope = null
+      this.adjustmentEpisode = null
+      this.followUp = null
+      this.serverSavePromise = null
+      this.startedAt = null
       this.gpsError = ''
       this.prepChecklist = {}
+    },
+
+    async completeTraining() {
+      const token = load('authToken', null)
+      if (token && this.record?.serverId && import.meta.env?.MODE !== 'test') {
+        await completeRunApi(token, this.record.serverId)
+      }
+      if (this.session) usePlanStore().markSessionDone(this.session.id, 'done')
+      return this.record
     },
   },
 })

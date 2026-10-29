@@ -6,6 +6,7 @@ const props = defineProps({
   weeks: { type: Array, required: true },
   currentWeek: { type: Number, default: 1 },
 })
+const emit = defineEmits(['select'])
 
 const TONE = {
   base: 'bg-surface-container text-on-surface-variant',
@@ -21,15 +22,21 @@ const cellClass = (w) => {
   return TONE.base
 }
 
-const phases = computed(() => {
+const phaseGroups = computed(() => {
   const list = props.weeks || []
-  const base = list.filter((w) => !w.stepBack)
-  const step = list.filter((w) => w.stepBack)
-  const range = (arr) => (arr.length ? `第${arr[0].week}-${arr[arr.length - 1].week}周` : '—')
+  const group = (label, items, bg, fg) => ({
+    label,
+    weeks: items.map((w) => `W${w.week}`).join(' · ') || '—',
+    bg,
+    fg,
+  })
+  const base = list.filter((w) => /适应|基础/i.test(`${w.phase || ''}${w.phaseName || ''}`))
+  const step = list.filter((w) => w.stepBack || w.taper || /回撤|减量/i.test(`${w.phase || ''}${w.phaseName || ''}`))
+  const specific = list.filter((w) => !base.includes(w) && !step.includes(w))
   return [
-    { label: '适应/基础', sub: range(base.slice(0, 2)), bg: 'bg-surface-container-low', fg: 'text-primary' },
-    { label: '回撤周', sub: step.length ? '第3周' : '—', bg: 'bg-primary-fixed/60', fg: 'text-primary' },
-    { label: '专项提升', sub: range(base.slice(2)), bg: 'bg-surface-container-low', fg: 'text-on-surface' },
+    group('适应/基础', base, 'bg-surface-container-low', 'text-primary'),
+    group('回撤周', step, 'bg-primary-fixed/60', 'text-primary'),
+    group('专项提升', specific, 'bg-surface-container-low', 'text-on-surface'),
   ]
 })
 </script>
@@ -41,9 +48,15 @@ const phases = computed(() => {
       :style="{ gridTemplateColumns: `repeat(${Math.min(weeks.length, 10)}, minmax(0,1fr))` }"
     >
       <div v-for="w in weeks" :key="w.week" class="flex flex-col items-center">
-        <div class="w-full py-1.5 rounded text-center font-label-caps text-label-caps" :class="cellClass(w)">
+        <button
+          class="w-full py-1.5 rounded text-center font-label-caps text-label-caps"
+          :class="cellClass(w)"
+          type="button"
+          :aria-label="`查看第${w.week}周训练`"
+          @click="emit('select', w.week)"
+        >
           W{{ w.week }}
-        </div>
+        </button>
         <span
           class="mt-1 w-1.5 h-1.5 rounded-full"
           :class="
@@ -58,9 +71,9 @@ const phases = computed(() => {
     </div>
 
     <div class="grid grid-cols-3 gap-1.5 pt-2">
-      <div v-for="phase in phases" :key="phase.label" class="rounded-lg p-2 text-center" :class="phase.bg">
+      <div v-for="phase in phaseGroups" :key="phase.label" class="rounded-lg p-2 text-center" :class="phase.bg">
         <span class="block font-label-caps text-label-caps font-bold" :class="phase.fg">{{ phase.label }}</span>
-        <span class="plan-summary-text block font-body-sm text-body-sm text-on-surface-variant scale-90">{{ phase.sub }}</span>
+        <span class="plan-summary-text block font-body-sm text-body-sm text-on-surface-variant scale-90">{{ phase.weeks }}</span>
       </div>
     </div>
   </div>

@@ -12,7 +12,7 @@ export async function requestApi(path, options = {}) {
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     })
   } catch {
-    const error = new Error('无法连接登录服务，请先启动后端服务')
+    const error = new Error('服务暂时不可用，请稍后重试')
     error.code = 'API_UNAVAILABLE'
     throw error
   }

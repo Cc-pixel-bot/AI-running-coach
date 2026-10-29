@@ -1,4 +1,4 @@
-/** 本地持久化（Demo 阶段用 localStorage 模拟后端数据库） */
+/** 仅保存登录态与页面缓存；业务数据以服务端数据库为准。 */
 const PREFIX = 'zhicheng:'
 
 export function load(key, fallback = null) {
@@ -28,7 +28,7 @@ export function remove(key) {
   }
 }
 
-/** 清除当前账号的业务数据，保留登录与演示设置。 */
+/** 清除当前账号的业务数据，保留登录状态。 */
 export function clearUserData() {
   const userKeys = [
     'profileDraft',
@@ -39,6 +39,8 @@ export function clearUserData() {
     'adjustmentLogs',
     'records',
     'lastRecord',
+    'latestAdjustmentSummary',
+    'profileAvatar',
   ]
   userKeys.forEach((key) => remove(key))
 }

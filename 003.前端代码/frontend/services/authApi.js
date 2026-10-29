@@ -28,6 +28,20 @@ export function generateAiPlanApi(token, profile) {
   })
 }
 
+export function createAiPlanTaskApi(token, profile) {
+  return requestApi('/ai/plans/generate-async', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ profile }),
+  })
+}
+
+export function getAiPlanTaskApi(token, taskId) {
+  return requestApi(`/ai/plans/tasks/${taskId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function checkGoalRecommendationApi(token, profile) {
   return requestApi('/ai/plans/goal-recommendation', {
     method: 'POST',
@@ -40,5 +54,58 @@ export function confirmPlanApi(token) {
   return requestApi('/plans/confirm', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function currentPlanApi(token) {
+  return requestApi('/plans/current', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function saveRunApi(token, record) {
+  return requestApi('/runs', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(record),
+  })
+}
+
+export function saveFeedbackApi(token, recordId, feedback) {
+  return requestApi(`/runs/${recordId}/feedback`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(feedback),
+  })
+}
+
+export function completeRunApi(token, recordId) {
+  return requestApi(`/runs/${recordId}/complete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function updateNicknameApi(token, nickname) {
+  return requestApi('/auth/me', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ nickname }),
+  })
+}
+
+export function requestAiAdjustmentApi(token, recordId) {
+  return requestApi('/ai/plans/adjust', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ recordId }),
+  })
+}
+
+export function decideAiAdjustmentApi(token, adjustmentId, decision) {
+  return requestApi(`/ai/plans/adjust/${adjustmentId}/decision`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ decision }),
   })
 }
